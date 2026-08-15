@@ -85,7 +85,7 @@ Licences are sold through [Polar](https://polar.sh) (merchant of record: they in
 
 ## Requirements
 
-- VS Code 1.95+. Cursor / VSCodium / Windsurf install it from Open VSX; the extension uses only standard APIs, but those hosts have not been tested yet.
+- VS Code 1.95+. VSCodium / Cursor / Windsurf install it from Open VSX; the extension uses only standard APIs. Verified in VSCodium 1.126 (the hermetic integration suite runs there unchanged); Cursor and Windsurf are not tested yet.
 - Claude Code CLI; the official **Claude Code** extension (`anthropic.claude-code`) for the VS Code side. Without it, only the CLI settings are written.
 - Remote-SSH / WSL / Dev Containers: runs where Claude Code runs (`extensionKind: workspace`). Extensions installed on the *other* side are not visible to the Doctor.
 

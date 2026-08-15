@@ -27,8 +27,12 @@ async function main(): Promise<void> {
   fs.mkdirSync(path.join(workspace, '.claude'), { recursive: true });
   fs.copyFileSync(path.join(fixtures, 'settings.logging-hook.json'), path.join(workspace, '.claude', 'settings.json'));
 
+  // Same hermetic suite against another VS Code-compatible host (Cursor, VSCodium…): point this at its executable.
+  const vscodeExecutablePath = process.env.HANDSFREE_VSCODE_EXE || undefined;
+  if (vscodeExecutablePath) console.log(`Running the integration suite in: ${vscodeExecutablePath}`);
   try {
     await runTests({
+      ...(vscodeExecutablePath ? { vscodeExecutablePath } : {}),
       extensionDevelopmentPath,
       extensionTestsPath,
       launchArgs: [workspace, `--user-data-dir=${path.join(extensionDevelopmentPath, '.vscode-test', 'user-data')}`, '--disable-extensions'],

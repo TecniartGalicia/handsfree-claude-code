@@ -13,6 +13,7 @@ Thanks for helping. This project is small on purpose; keep it that way.
 npm install
 npm run check            # typecheck + lint + unit tests
 npm run test:integration # downloads VS Code once, runs hermetic tests
+# Same suite inside another host (VSCodium, Cursor…): HANDSFREE_VSCODE_EXE=<path to its executable> npm run test:integration
 npm run build            # dist/extension.js
 npm run package          # .vsix
 ```
