@@ -24,7 +24,7 @@ Free, MIT, English + Spanish. Not affiliated with Anthropic — and honestly, if
 
 There's an optional Pro (one-time 7 €) with per-project "careful" profiles, guardrail rule sets that keep prompting *even in bypass mode* (`ask`/`deny` rules, no hooks), export/import and a status bar. Removing anything Pro added is always free.
 
-Marketplace: <MARKETPLACE_URL> · Open VSX (for Cursor/VSCodium — standard APIs only, not yet tested there): <OPENVSX_URL> · Source: https://github.com/TecniartGalicia/handsfree-claude-code
+Marketplace: https://marketplace.visualstudio.com/items?itemName=argalla.handsfree-claude-code · Open VSX (for Cursor/VSCodium — standard APIs only, not yet tested there): https://open-vsx.org/extension/argalla/handsfree-claude-code · Source: https://github.com/TecniartGalicia/handsfree-claude-code
 
 Happy to answer questions about the settings precedence — the Doctor's texts are basically the docs' "which mode a session starts in" section, applied.
 
@@ -38,7 +38,7 @@ Happy to answer questions about the settings precedence — the Doctor's texts a
 
 3/ Free, MIT, EN+ES. Not affiliated with Anthropic. If Claude Code's auto mode works for you, keep it — this is for zero-prompt workflows in repos you trust. Optional Pro (7 € once): careful-per-project profiles, guardrails that still prompt in bypass, export/import.
 
-<MARKETPLACE_URL> · https://github.com/TecniartGalicia/handsfree-claude-code
+https://marketplace.visualstudio.com/items?itemName=argalla.handsfree-claude-code · https://github.com/TecniartGalicia/handsfree-claude-code
 
 ## 2b · X / LinkedIn — ES
 
@@ -48,7 +48,7 @@ Happy to answer questions about the settings precedence — the Doctor's texts a
 
 3/ Gratis, MIT, EN+ES. Sin relación con Anthropic. Si el modo auto de Claude Code ya te vale, quédatelo: esto es para flujos sin diálogos en repos de confianza. Pro opcional (7 € una vez): perfiles prudentes por proyecto, guardarraíles que siguen preguntando en bypass, exportar/importar.
 
-<MARKETPLACE_URL> · https://github.com/TecniartGalicia/handsfree-claude-code
+https://marketplace.visualstudio.com/items?itemName=argalla.handsfree-claude-code · https://github.com/TecniartGalicia/handsfree-claude-code
 
 ---
 
@@ -69,7 +69,7 @@ Gratis y de código abierto (MIT), en inglés y castellano. Sin relación con An
 
 **Pro (7 €, pago único):** perfil "prudente" por proyecto (Claude vuelve a preguntar solo en ese repositorio), guardarraíles — conjuntos de reglas `ask`/`deny` que Claude Code aplica incluso en modo bypass —, exportar/importar el perfil a otro equipo y barra de estado. Quitar lo que Pro añadió es siempre gratis.
 
-[Instalar desde el Marketplace](<MARKETPLACE_URL>) · [Open VSX (Cursor / VSCodium; aún sin probar allí)](<OPENVSX_URL>) · [Código en GitHub](https://github.com/TecniartGalicia/handsfree-claude-code)
+[Instalar desde el Marketplace](https://marketplace.visualstudio.com/items?itemName=argalla.handsfree-claude-code) · [Open VSX (Cursor / VSCodium; aún sin probar allí)](https://open-vsx.org/extension/argalla/handsfree-claude-code) · [Código en GitHub](https://github.com/TecniartGalicia/handsfree-claude-code)
 
 Handsfree es de Argalla, la línea tecnológica de Tecniart Galicia. Si tu equipo usa Claude Code y quiere una configuración coherente en todas las máquinas, hablamos.
 

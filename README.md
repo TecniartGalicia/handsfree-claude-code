@@ -1,5 +1,7 @@
 # Handsfree for Claude Code
 
+**Install:** [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=argalla.handsfree-claude-code) · [Open VSX](https://open-vsx.org/extension/argalla/handsfree-claude-code) (Cursor / VSCodium) · or run `code --install-extension argalla.handsfree-claude-code`.
+
 **Let Claude Code work without asking for permission — using only its own, native settings.** One command turns on Claude Code's *bypass permissions* mode the way Anthropic designed it (no hooks, no auto-clicking, no usage quotas), one command reverts it byte-for-byte, and a **Doctor** tells you exactly *why* Claude is still asking when something else on your machine gets in the way.
 
 > **Not affiliated with, endorsed by, or sponsored by Anthropic.** "Claude" is a trademark of Anthropic, PBC. This extension only writes settings that Claude Code and its official VS Code extension document and expose.
