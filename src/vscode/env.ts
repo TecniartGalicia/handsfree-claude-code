@@ -3,7 +3,7 @@ import { l10n } from 'vscode';
 import { backupDir, claudeSettingsPath, managedSettingsCandidates } from '../core/paths';
 import { readJsonFile, ReadResult } from '../core/jsonFile';
 import { ClaudeSettings } from '../core/claudeSettings';
-import { loadSnapshotFile, saveSnapshot, Snapshot } from '../core/snapshot';
+import { loadSnapshotFile, retireSnapshotFile, saveSnapshot, Snapshot } from '../core/snapshot';
 
 export const OUTPUT_NAME = 'Handsfree for Claude Code';
 const STATE_SNAPSHOT = 'handsfree.lastSnapshot';
@@ -59,12 +59,14 @@ export async function loadSnapshot(context: vscode.ExtensionContext): Promise<Sn
   return loadSnapshotFile(resolveBackupDir());
 }
 
+/** Forget the snapshot everywhere (state + file) so a second Revert cannot replay it. */
 export async function clearSnapshot(context: vscode.ExtensionContext): Promise<void> {
   await context.globalState.update(STATE_SNAPSHOT, undefined);
-}
-
-export function consentAcceptedAt(context: vscode.ExtensionContext): string | undefined {
-  return context.globalState.get<string>(STATE_CONSENT);
+  try {
+    await retireSnapshotFile(resolveBackupDir());
+  } catch (e) {
+    log(`Could not retire snapshot file: ${String(e)}`);
+  }
 }
 
 export async function recordConsent(context: vscode.ExtensionContext): Promise<void> {

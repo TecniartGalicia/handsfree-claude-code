@@ -3,7 +3,7 @@ import { l10n } from 'vscode';
 import { enableAutonomousMode } from './commands/enable';
 import { revertAutonomousMode } from './commands/revert';
 import { runDoctor, showDoctor } from './doctor/doctor';
-import { log } from './vscode/env';
+import { log, output } from './vscode/env';
 
 /**
  * Activation only registers commands. Nothing runs at startup, nothing watches, nothing hooks:
@@ -21,6 +21,7 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   context.subscriptions.push(
+    output(),
     vscode.commands.registerCommand('handsfree.enable', wrap('enable', () => enableAutonomousMode(context))),
     vscode.commands.registerCommand('handsfree.revert', wrap('revert', () => revertAutonomousMode(context))),
     vscode.commands.registerCommand('handsfree.doctor', wrap('doctor', () => showDoctor(context))),

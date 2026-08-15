@@ -41,7 +41,19 @@
   ],
   "main": "./dist/extension.js",
   "l10n": "./l10n",
-  "activationEvents": [],
+  "activationEvents": [
+    "onCommand:handsfree._doctorReport"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true,
+      "description": "Only reads and writes your user-level Claude Code and VS Code settings; workspace files are read for diagnostics only."
+    },
+    "virtualWorkspaces": {
+      "supported": "limited",
+      "description": "Workspace-level checks are skipped in virtual workspaces."
+    }
+  },
   "contributes": {
     "commands": [
       {
@@ -66,6 +78,7 @@
         "handsfree.claudeSettingsPath": {
           "type": "string",
           "default": "",
+          "scope": "machine",
           "markdownDescription": "%cfg.claudeSettingsPath%"
         }
       }

@@ -2,7 +2,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { l10n } from 'vscode';
-import { removeAllowRules, removeHooks } from '../core/claudeSettings';
+import { removeAllowRules, removeHooksDetailed } from '../core/claudeSettings';
 import { DoctorInput, evaluate, Finding, FixKind, summarize } from '../core/findings';
 import { readJsonFile, writeJsonFileAtomic } from '../core/jsonFile';
 import { backupSettingsFile } from '../core/snapshot';
@@ -177,10 +177,16 @@ async function applyFix(context: vscode.ExtensionContext, fix: FixKind): Promise
       const yes = l10n.t('Remove');
       const pick = await vscode.window.showWarningMessage(what, { modal: true, detail: detail + '\n\n' + l10n.t('A backup is saved first.') }, yes);
       if (pick !== yes) return;
-      const backup = await backupSettingsFile(settingsPath, resolveBackupDir());
-      const next = fix.kind === 'remove-hooks' ? removeHooks(current.data, fix.hooks) : removeAllowRules(current.data, fix.rules);
-      await writeJsonFileAtomic(settingsPath, next);
-      log(`Doctor: ${fix.kind} applied (backup ${backup ?? 'n/a'})`);
+      const backup = await backupSettingsFile(settingsPath, resolveBackupDir(), new Date(), 'before-doctor');
+      if (fix.kind === 'remove-hooks') {
+        const { next, removed, skipped } = removeHooksDetailed(current.data, fix.hooks);
+        if (removed > 0) await writeJsonFileAtomic(settingsPath, next);
+        if (skipped.length > 0) void vscode.window.showWarningMessage(l10n.t('{0} hook(s) were not removed because the file changed since the report; run the Doctor again.', skipped.length));
+        log(`Doctor: removed ${removed} hook(s), skipped ${skipped.length} (backup ${backup ?? 'n/a'})`);
+      } else {
+        await writeJsonFileAtomic(settingsPath, removeAllowRules(current.data, fix.rules));
+        log(`Doctor: clean-allow applied (backup ${backup ?? 'n/a'})`);
+      }
       return;
     }
   }

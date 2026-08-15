@@ -77,18 +77,44 @@ export function stringifyPretty(data: unknown): string {
   return JSON.stringify(data, null, 2) + '\n';
 }
 
-/** Write via a temp file + rename so a crash never leaves a half-written settings file. */
-export async function writeJsonFileAtomic(file: string, data: unknown): Promise<void> {
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.handsfree-${process.pid}-${Date.now()}.tmp`;
-  await fs.writeFile(tmp, stringifyPretty(data), 'utf8');
+/**
+ * Write via a temp file + rename so a crash never leaves a half-written settings file.
+ * - Follows symlinks (dotfile setups keep their link; the real file is what changes).
+ * - Preserves the original file mode (a 0600 settings file with secrets stays 0600).
+ * Returns the text that was written, so callers can fingerprint it.
+ */
+export async function writeJsonFileAtomic(file: string, data: unknown): Promise<string> {
+  const text = stringifyPretty(data);
+  const target = await realpathOrSelf(file);
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  let mode: number | undefined;
   try {
-    await fs.rename(tmp, file);
+    mode = (await fs.stat(target)).mode & 0o777;
+  } catch {
+    mode = undefined; // new file: default umask
+  }
+  const tmp = `${target}.handsfree-${process.pid}-${Date.now()}.tmp`;
+  await fs.writeFile(tmp, text, mode !== undefined ? { encoding: 'utf8', mode } : 'utf8');
+  try {
+    await fs.rename(tmp, target);
   } catch {
     // Windows can refuse to rename over a file another process holds open;
     // fall back to a direct write (still complete content, single write call).
-    await fs.writeFile(file, stringifyPretty(data), 'utf8');
-    await fs.rm(tmp, { force: true });
+    await fs.writeFile(target, text, 'utf8');
+    try {
+      await fs.rm(tmp, { force: true });
+    } catch {
+      /* a stray .tmp is harmless; never fail the command for it */
+    }
+  }
+  return text;
+}
+
+async function realpathOrSelf(file: string): Promise<string> {
+  try {
+    return await fs.realpath(file);
+  } catch {
+    return file;
   }
 }
 

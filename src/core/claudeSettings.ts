@@ -85,10 +85,31 @@ export interface RogueHook {
   reason: 'known-tool' | 'wildcard';
 }
 
+/** Representative tool names; a matcher that accepts all of them is treated as "every tool". */
+const PROBE_TOOLS = ['Bash', 'Read', 'Edit', 'Write', 'Glob', 'Grep', 'Agent', 'WebFetch', 'NotebookEdit'];
+
+/**
+ * Claude Code treats `matcher` as a regular expression ("*" is special-cased to mean everything).
+ * Returns true when the matcher applies to every tool: missing/empty, "*", or a regex such as
+ * ".*", "^.*$", ".+", "(.*)" that matches all representative tool names.
+ */
+export function matcherIsWildcard(matcher: string | undefined): boolean {
+  if (matcher === undefined) return true;
+  const m = matcher.trim();
+  if (m === '' || m === '*') return true;
+  let re: RegExp;
+  try {
+    re = new RegExp(m);
+  } catch {
+    return false; // invalid regex: Claude Code will not match anything with it
+  }
+  return PROBE_TOOLS.every((t) => re.test(t));
+}
+
 /**
  * Finds command hooks on permission-deciding events that either match a known auto-accept tool
- * or apply to every tool ("*" / empty matcher). The latter may be legitimate (logging), so callers
- * should present them as warnings, not errors.
+ * or apply to every tool ("*" / empty / catch-all regex matcher). The latter may be legitimate
+ * (logging), so callers should present them as warnings, not errors.
  */
 export function findRogueHooks(s: ClaudeSettings | undefined): RogueHook[] {
   const out: RogueHook[] = [];
@@ -100,7 +121,7 @@ export function findRogueHooks(s: ClaudeSettings | undefined): RogueHook[] {
     groups.forEach((group: any, groupIndex: number) => {
       if (!isPlainObject(group) || !Array.isArray(group.hooks)) return;
       const matcher: string | undefined = typeof group.matcher === 'string' ? group.matcher : undefined;
-      const wildcard = matcher === undefined || matcher.trim() === '' || matcher.trim() === '*';
+      const wildcard = matcherIsWildcard(matcher);
       group.hooks.forEach((h: any, hookIndex: number) => {
         if (!isPlainObject(h) || h.type !== 'command' || typeof h.command !== 'string') return;
         const command: string = h.command;
@@ -115,35 +136,59 @@ export function findRogueHooks(s: ClaudeSettings | undefined): RogueHook[] {
   return out;
 }
 
-/** Removes the given hooks and prunes empty groups / events / the hooks object itself. */
+/**
+ * Removes the given hooks and prunes empty groups / events / the hooks object itself.
+ * A hook is only removed when the entry at (event, groupIndex, hookIndex) still has the same
+ * command — so stale indices (file edited since the findings were computed) never delete
+ * somebody else's hook. Returns the new settings and how many hooks were actually removed.
+ */
 export function removeHooks(input: ClaudeSettings, toRemove: RogueHook[]): ClaudeSettings {
+  return removeHooksDetailed(input, toRemove).next;
+}
+
+export function removeHooksDetailed(input: ClaudeSettings, toRemove: RogueHook[]): { next: ClaudeSettings; removed: number; skipped: RogueHook[] } {
   const next = clone(input);
-  if (!isPlainObject(next.hooks)) return next;
-  const byEvent = new Map<string, Map<number, Set<number>>>();
+  const skipped: RogueHook[] = [];
+  let removed = 0;
+  if (!isPlainObject(next.hooks)) return { next, removed, skipped: [...toRemove] };
+  const byEvent = new Map<string, Map<number, Map<number, RogueHook>>>();
   for (const r of toRemove) {
     if (!byEvent.has(r.event)) byEvent.set(r.event, new Map());
     const g = byEvent.get(r.event)!;
-    if (!g.has(r.groupIndex)) g.set(r.groupIndex, new Set());
-    g.get(r.groupIndex)!.add(r.hookIndex);
+    if (!g.has(r.groupIndex)) g.set(r.groupIndex, new Map());
+    g.get(r.groupIndex)!.set(r.hookIndex, r);
   }
   for (const [event, groups] of byEvent) {
     const arr = next.hooks[event];
-    if (!Array.isArray(arr)) continue;
+    if (!Array.isArray(arr)) {
+      for (const g of groups.values()) skipped.push(...g.values());
+      continue;
+    }
     const kept: any[] = [];
     arr.forEach((group: any, gi: number) => {
-      const removeSet = groups.get(gi);
-      if (!removeSet || !isPlainObject(group) || !Array.isArray(group.hooks)) {
+      const wanted = groups.get(gi);
+      if (!wanted || !isPlainObject(group) || !Array.isArray(group.hooks)) {
+        if (wanted) skipped.push(...wanted.values());
         kept.push(group);
         return;
       }
-      const remaining = group.hooks.filter((_h: any, hi: number) => !removeSet.has(hi));
+      const remaining = group.hooks.filter((h: any, hi: number) => {
+        const r = wanted.get(hi);
+        if (!r) return true;
+        const same = isPlainObject(h) && h.command === r.command;
+        if (same) removed++;
+        else skipped.push(r);
+        return !same;
+      });
       if (remaining.length > 0) kept.push({ ...group, hooks: remaining });
     });
+    // groups referenced beyond the array length
+    for (const [gi, wanted] of groups) if (gi >= arr.length) skipped.push(...wanted.values());
     if (kept.length > 0) next.hooks[event] = kept;
     else delete next.hooks[event];
   }
   if (Object.keys(next.hooks).length === 0) delete next.hooks;
-  return next;
+  return { next, removed, skipped };
 }
 
 // ---------------------------------------------------------------------------
