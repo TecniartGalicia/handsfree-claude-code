@@ -30,15 +30,15 @@ export function resolveBackupDir(): string {
   return backupDir(resolveClaudeSettingsPath());
 }
 
-export async function readClaudeSettings(): Promise<ReadResult<ClaudeSettings>> {
-  return readJsonFile<ClaudeSettings>(resolveClaudeSettingsPath());
+export async function readClaudeSettings(timeoutMs?: number): Promise<ReadResult<ClaudeSettings>> {
+  return readJsonFile<ClaudeSettings>(resolveClaudeSettingsPath(), timeoutMs);
 }
 
 /** Managed (policy) settings, if any exist on this machine. */
-export async function readManagedSettings(): Promise<{ path: string; result: ReadResult<ClaudeSettings> }[]> {
+export async function readManagedSettings(timeoutMs?: number): Promise<{ path: string; result: ReadResult<ClaudeSettings> }[]> {
   const out: { path: string; result: ReadResult<ClaudeSettings> }[] = [];
   for (const p of managedSettingsCandidates()) {
-    const result = await readJsonFile<ClaudeSettings>(p);
+    const result = await readJsonFile<ClaudeSettings>(p, timeoutMs);
     if (result.exists) out.push({ path: p, result });
   }
   return out;

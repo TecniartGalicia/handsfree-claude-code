@@ -3,37 +3,38 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { l10n } from 'vscode';
 import { removeAllowRules, removeHooksDetailed } from '../core/claudeSettings';
-import { DoctorInput, evaluate, Finding, FixKind, summarize } from '../core/findings';
+import { DoctorInput, evaluate, Finding, FixKind, maskSecrets, planFixAll, summarize } from '../core/findings';
 import { readJsonFile, writeJsonFileAtomic } from '../core/jsonFile';
+import { claudeConfigDir } from '../core/paths';
+import { DoctorReport, redact, renderReportMarkdown } from '../core/report';
 import { backupSettingsFile } from '../core/snapshot';
 import { enableAutonomousMode } from '../commands/enable';
-import { log, openFileAt, readClaudeSettings, readManagedSettings, resolveBackupDir, resolveClaudeSettingsPath } from '../vscode/env';
-import { inspectOfficialExtension, OFFICIAL_EXT_ID, OfficialValues, readOfficialValues } from '../vscode/officialExtension';
-import { findInstalledRogueExtensions, uninstallExtension } from '../vscode/rogueExtensions';
+import { log, offerReload, openFileAt, readClaudeSettings, readManagedSettings, resolveBackupDir, resolveClaudeSettingsPath } from '../vscode/env';
+import { inspectOfficialExtension, OfficialValues, readOfficialValues } from '../vscode/officialExtension';
+import { findInstalledRogueExtensions, uninstalledThisSession, uninstallExtension } from '../vscode/rogueExtensions';
 
-export interface DoctorReport {
-  generatedAt: string;
-  findings: Finding[];
-  env: {
-    platform: string;
-    vscodeVersion: string;
-    officialVersion?: string;
-    claudeSettingsPath: string;
-    extensionVersion: string;
-  };
-}
+export type { DoctorReport } from '../core/report';
 
-/** Collects everything the pure evaluator needs. */
+/** Per-file read timeout so a hung network drive cannot freeze the Doctor. */
+const READ_TIMEOUT_MS = 5000;
+
+/** Collects everything the pure evaluator needs. Never throws for a single unreadable file. */
 export async function collect(): Promise<DoctorInput> {
   const claudePath = resolveClaudeSettingsPath();
-  const [claude, managed] = await Promise.all([readClaudeSettings(), readManagedSettings()]);
+  const [claude, managed] = await Promise.all([readClaudeSettings(READ_TIMEOUT_MS), readManagedSettings(READ_TIMEOUT_MS)]);
   const contract = inspectOfficialExtension();
   const values: OfficialValues = contract.installed ? readOfficialValues() : { allowScope: 'unset', modeScope: 'unset' };
+
   const workspaceFiles: DoctorInput['workspaceFiles'] = [];
+  const seen = new Set<string>([path.normalize(claudePath).toLowerCase()]);
   for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    if (folder.uri.scheme !== 'file') continue; // virtual workspaces: nothing to read
     for (const name of ['settings.json', 'settings.local.json']) {
       const p = path.join(folder.uri.fsPath, '.claude', name);
-      workspaceFiles.push({ path: p, result: await readJsonFile(p) });
+      const key = path.normalize(p).toLowerCase();
+      if (seen.has(key)) continue; // e.g. the home folder opened as a workspace → same file as user settings
+      seen.add(key);
+      workspaceFiles.push({ path: p, result: await readJsonFile(p, READ_TIMEOUT_MS) });
     }
   }
   return {
@@ -44,13 +45,12 @@ export async function collect(): Promise<DoctorInput> {
       installed: contract.installed,
       version: contract.version,
       supportsBypass: contract.supportsBypass,
-      tested: contract.tested,
+      olderThanTested: contract.olderThanTested,
       allow: values.allow,
       mode: values.mode,
-      allowScope: values.allowScope,
-      modeScope: values.modeScope,
     },
     rogueExtensions: findInstalledRogueExtensions(),
+    uninstalledPendingReload: [...uninstalledThisSession],
     workspaceFiles,
   };
 }
@@ -81,13 +81,16 @@ interface Item extends vscode.QuickPickItem {
   action?: 'copy' | 'open-report' | 'rerun' | 'fix-all';
 }
 
+function redactOpts(): { extraDirs: string[] } {
+  return { extraDirs: [claudeConfigDir(), path.dirname(resolveClaudeSettingsPath())] };
+}
+
 /** Interactive Doctor: list → pick → fix → re-run, until the user closes it. */
 export async function showDoctor(context: vscode.ExtensionContext): Promise<void> {
-  // Loop so that after each fix the list refreshes.
   for (;;) {
-    const report = await runDoctor(context);
+    const report = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: l10n.t('Handsfree Doctor: checking…') }, () => runDoctor(context));
     const s = summarize(report.findings);
-    const fixable = report.findings.filter((f) => f.fix && f.fix.kind !== 'open-file' && f.severity !== 'ok');
+    const plan = planFixAll(report.findings);
 
     const items: Item[] = [];
     const push = (sev: Finding['severity'], label: string) => {
@@ -97,7 +100,7 @@ export async function showDoctor(context: vscode.ExtensionContext): Promise<void
       for (const f of group) {
         items.push({
           label: `${ICON[sev]} ${f.title}`,
-          description: f.fix ? (f.fix.kind === 'open-file' ? l10n.t('Open file') : l10n.t('Fix')) : '',
+          description: f.fix ? (f.fix.kind === 'open-file' ? l10n.t('Open file') : l10n.t('Fix')) : f.detail ? l10n.t('Details') : '',
           detail: f.detail ? f.detail.split('\n')[0] : undefined,
           finding: f,
         });
@@ -108,7 +111,7 @@ export async function showDoctor(context: vscode.ExtensionContext): Promise<void
     push('info', l10n.t('Notes'));
     push('ok', l10n.t('OK'));
     items.push({ label: l10n.t('Actions'), kind: vscode.QuickPickItemKind.Separator });
-    if (fixable.length > 1) items.push({ label: `$(tools) ${l10n.t('Fix everything fixable ({0})', fixable.length)}`, action: 'fix-all' });
+    if (plan.length > 1) items.push({ label: `$(tools) ${l10n.t('Fix all problems ({0} actions)', plan.length)}`, action: 'fix-all' });
     items.push({ label: `$(clippy) ${l10n.t('Copy report to clipboard')}`, description: l10n.t('for a bug report or a colleague'), action: 'copy' });
     items.push({ label: `$(markdown) ${l10n.t('Open report as Markdown')}`, action: 'open-report' });
     items.push({ label: `$(refresh) ${l10n.t('Run again')}`, action: 'rerun' });
@@ -122,29 +125,30 @@ export async function showDoctor(context: vscode.ExtensionContext): Promise<void
     if (!pick) return;
 
     if (pick.action === 'copy') {
-      await vscode.env.clipboard.writeText(renderReportMarkdown(report));
-      void vscode.window.showInformationMessage(l10n.t('Doctor report copied to the clipboard (home directory redacted).'));
+      await vscode.env.clipboard.writeText(renderReportMarkdown(report, redactOpts()));
+      void vscode.window.showInformationMessage(l10n.t('Doctor report copied to the clipboard (home directory and user name redacted).'));
       continue;
     }
     if (pick.action === 'open-report') {
-      const doc = await vscode.workspace.openTextDocument({ language: 'markdown', content: renderReportMarkdown(report) });
+      const doc = await vscode.workspace.openTextDocument({ language: 'markdown', content: renderReportMarkdown(report, redactOpts()) });
       await vscode.window.showTextDocument(doc, { preview: false });
       return;
     }
     if (pick.action === 'rerun') continue;
     if (pick.action === 'fix-all') {
-      for (const f of fixable) await applyFix(context, f.fix!);
+      for (const fix of plan) await applyFix(context, fix);
       continue;
     }
     if (pick.finding) {
-      if (pick.finding.fix) await applyFix(context, pick.finding.fix);
-      else if (pick.finding.detail) void vscode.window.showInformationMessage(pick.finding.title, { modal: true, detail: pick.finding.detail });
+      const f = pick.finding;
+      if (f.fix) await applyFix(context, f.fix, f);
+      else if (f.detail) void vscode.window.showInformationMessage(f.title, { modal: true, detail: redact(f.detail, redactOpts()) });
       continue;
     }
   }
 }
 
-async function applyFix(context: vscode.ExtensionContext, fix: FixKind): Promise<void> {
+async function applyFix(context: vscode.ExtensionContext, fix: FixKind, finding?: Finding): Promise<void> {
   switch (fix.kind) {
     case 'enable':
       await enableAutonomousMode(context);
@@ -154,11 +158,12 @@ async function applyFix(context: vscode.ExtensionContext, fix: FixKind): Promise
       return;
     case 'uninstall-extension': {
       const yes = l10n.t('Uninstall');
-      const pick = await vscode.window.showWarningMessage(l10n.t('Uninstall extension {0}?', fix.id), { modal: true }, yes);
+      const pick = await vscode.window.showWarningMessage(l10n.t('Uninstall extension {0}?', fix.id), { modal: true, detail: finding?.detail }, yes);
       if (pick !== yes) return;
       try {
         await uninstallExtension(fix.id);
         log(`Doctor: uninstalled ${fix.id}`);
+        await offerReload(l10n.t('{0} uninstalled. Reload the window to finish removing it.', fix.id));
       } catch (e) {
         void vscode.window.showErrorMessage(l10n.t('Could not uninstall {0}: {1}', fix.id, String(e)));
       }
@@ -168,12 +173,16 @@ async function applyFix(context: vscode.ExtensionContext, fix: FixKind): Promise
     case 'clean-allow': {
       const settingsPath = resolveClaudeSettingsPath();
       const current = await readClaudeSettings();
-      if (!current.ok || !current.exists) return;
+      if (!current.ok) {
+        void vscode.window.showErrorMessage(l10n.t('{0} is not readable right now; nothing was changed. Run the Doctor again.', settingsPath));
+        return;
+      }
+      if (!current.exists) return;
       const what =
         fix.kind === 'remove-hooks'
           ? l10n.t('Remove {0} hook(s) from {1}?', fix.hooks.length, settingsPath)
           : l10n.t('Remove {0} allow rule(s) from {1}?', fix.rules.length, settingsPath);
-      const detail = fix.kind === 'remove-hooks' ? fix.hooks.map((h) => `${h.event}: ${h.command}`).join('\n') : fix.rules.join('\n');
+      const detail = fix.kind === 'remove-hooks' ? fix.hooks.map((h) => `${h.event}: ${maskSecrets(h.command)}`).join('\n') : fix.rules.join('\n');
       const yes = l10n.t('Remove');
       const pick = await vscode.window.showWarningMessage(what, { modal: true, detail: detail + '\n\n' + l10n.t('A backup is saved first.') }, yes);
       if (pick !== yes) return;
@@ -182,40 +191,14 @@ async function applyFix(context: vscode.ExtensionContext, fix: FixKind): Promise
         const { next, removed, skipped } = removeHooksDetailed(current.data, fix.hooks);
         if (removed > 0) await writeJsonFileAtomic(settingsPath, next);
         if (skipped.length > 0) void vscode.window.showWarningMessage(l10n.t('{0} hook(s) were not removed because the file changed since the report; run the Doctor again.', skipped.length));
+        else void vscode.window.showInformationMessage(l10n.t('{0} hook(s) removed. Backup: {1}', removed, backup ?? '-'));
         log(`Doctor: removed ${removed} hook(s), skipped ${skipped.length} (backup ${backup ?? 'n/a'})`);
       } else {
         await writeJsonFileAtomic(settingsPath, removeAllowRules(current.data, fix.rules));
+        void vscode.window.showInformationMessage(l10n.t('{0} allow rule(s) removed. Backup: {1}', fix.rules.length, backup ?? '-'));
         log(`Doctor: clean-allow applied (backup ${backup ?? 'n/a'})`);
       }
       return;
     }
   }
-}
-
-/** Markdown for issues / colleagues. Home directory is replaced with ~ so it can be pasted publicly. */
-export function renderReportMarkdown(report: DoctorReport, home: string = os.homedir()): string {
-  const redact = (s: string) => (home ? s.split(home).join('~') : s);
-  const s = summarize(report.findings);
-  const lines: string[] = [];
-  lines.push('# Handsfree for Claude Code — Doctor report');
-  lines.push('');
-  lines.push(`- Generated: ${report.generatedAt}`);
-  lines.push(`- Handsfree: ${report.env.extensionVersion} · VS Code: ${report.env.vscodeVersion} · ${OFFICIAL_EXT_ID}: ${report.env.officialVersion ?? 'not installed'}`);
-  lines.push(`- Platform: ${report.env.platform}`);
-  lines.push(`- Claude settings: ${redact(report.env.claudeSettingsPath)}`);
-  lines.push(`- Result: ${s.errors} error(s), ${s.warnings} warning(s), ${s.infos} note(s), ${s.oks} ok`);
-  lines.push('');
-  const label: Record<Finding['severity'], string> = { error: 'ERROR', warn: 'WARN', info: 'INFO', ok: 'OK' };
-  for (const f of report.findings) {
-    lines.push(`## [${label[f.severity]}] ${redact(f.title)}`);
-    if (f.detail) {
-      lines.push('');
-      lines.push(...redact(f.detail).split('\n').map((l) => `    ${l}`));
-    }
-    if (f.fix) lines.push(`\n_Fix available: ${f.fix.kind}_`);
-    lines.push('');
-  }
-  lines.push('---');
-  lines.push('Settings changes apply to new Claude Code conversations; reload the VS Code window after fixing.');
-  return lines.join('\n') + '\n';
 }

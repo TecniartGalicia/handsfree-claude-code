@@ -2,8 +2,11 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 
 export interface JsonError {
+  /** Human message. Never contains an excerpt of the file (V8 adds one; we strip it — settings may hold secrets). */
   message: string;
-  /** 0-based character offset into the raw text, when the engine reports one. */
+  /** Node error code when the file could not be READ at all (EACCES, EISDIR, ETIMEDOUT, ...). Absent for parse errors. */
+  code?: string;
+  /** 0-based character offset into the raw text, when known. */
   offset?: number;
   /** 1-based line / column derived from `offset`. */
   line?: number;
@@ -23,9 +26,10 @@ export function parseStrictJson<T = unknown>(rawInput: string): ParseResult<T> {
   try {
     return { ok: true, data: JSON.parse(raw) as T };
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    const offset = offsetFromMessage(message);
-    const err: JsonError = { message };
+    const original = e instanceof Error ? e.message : String(e);
+    let offset = offsetFromMessage(original);
+    if (offset === undefined) offset = offsetFromExcerpt(original, raw);
+    const err: JsonError = { message: sanitizeJsonErrorMessage(original) };
     if (offset !== undefined) {
       err.offset = offset;
       const lc = lineColFromOffset(raw, offset);
@@ -40,6 +44,28 @@ export function parseStrictJson<T = unknown>(rawInput: string): ParseResult<T> {
 export function offsetFromMessage(message: string): number | undefined {
   const m = /position\s+(\d+)/i.exec(message);
   return m ? Number(m[1]) : undefined;
+}
+
+/**
+ * Newer V8 sometimes reports `Unexpected token 'x', ..."<excerpt>"... is not valid JSON` without a
+ * position. Locate the excerpt in the raw text to recover an offset (best effort).
+ */
+export function offsetFromExcerpt(message: string, raw: string): number | undefined {
+  const m = /,\s*(?:\.\.\.)?"([\s\S]*?)"(?:\.\.\.)?\s+is not valid JSON/.exec(message);
+  if (!m || !m[1]) return undefined;
+  const idx = raw.indexOf(m[1]);
+  return idx >= 0 ? idx : undefined;
+}
+
+/** Drop any file excerpt V8 put in the message; keep the diagnostic part. */
+export function sanitizeJsonErrorMessage(message: string): string {
+  const posIdx = message.search(/\s+in JSON at position\s+\d+/i);
+  if (posIdx >= 0) {
+    // "Unexpected token } in JSON at position 42 (line 3 column 1)" — keep everything except a leading excerpt
+    const head = message.slice(0, posIdx).replace(/,\s*(?:\.\.\.)?"[\s\S]*?"(?:\.\.\.)?\s*$/, '');
+    return head + message.slice(posIdx);
+  }
+  return message.replace(/,\s*(?:\.\.\.)?"[\s\S]*?"(?:\.\.\.)?\s+is not valid JSON/, ' (file excerpt omitted) is not valid JSON');
 }
 
 export function lineColFromOffset(raw: string, offset: number): { line: number; column: number } {
@@ -59,17 +85,45 @@ export function stripBom(s: string): string {
   return s.charCodeAt(0) === 0xfeff ? s.slice(1) : s;
 }
 
-export async function readJsonFile<T = unknown>(file: string): Promise<ReadResult<T>> {
+/**
+ * Reads + parses. Never throws for the usual failure modes:
+ *  - missing file            → ok:true, exists:false
+ *  - unreadable (EACCES...)  → ok:false with error.code
+ *  - invalid JSON            → ok:false with line/column
+ * Optional timeout guards against hung network drives.
+ */
+export async function readJsonFile<T = unknown>(file: string, timeoutMs?: number): Promise<ReadResult<T>> {
   let raw: string;
   try {
-    raw = await fs.readFile(file, 'utf8');
+    raw = timeoutMs ? await withTimeout(fs.readFile(file, 'utf8'), timeoutMs, file) : await fs.readFile(file, 'utf8');
   } catch (e: any) {
-    if (e && e.code === 'ENOENT') return { ok: true, exists: false, data: undefined, raw: '' };
-    throw e;
+    const code: string | undefined = e && typeof e.code === 'string' ? e.code : undefined;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return { ok: true, exists: false, data: undefined, raw: '' };
+    return { ok: false, exists: true, raw: '', error: { message: e instanceof Error ? e.message : String(e), code: code ?? 'EUNKNOWN' } };
   }
   const parsed = parseStrictJson<T>(raw);
   if (parsed.ok) return { ok: true, exists: true, data: parsed.data, raw };
   return { ok: false, exists: true, raw, error: parsed.error };
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const err: any = new Error(`Timed out after ${ms} ms reading ${what}`);
+      err.code = 'ETIMEDOUT';
+      reject(err);
+    }, ms);
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
 }
 
 /** Pretty JSON, 2 spaces, trailing newline — the same shape Claude Code writes. */

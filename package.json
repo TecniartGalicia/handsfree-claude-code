@@ -40,6 +40,9 @@
     "doctor"
   ],
   "main": "./dist/extension.js",
+  "extensionKind": [
+    "workspace"
+  ],
   "l10n": "./l10n",
   "activationEvents": [
     "onCommand:handsfree._doctorReport"

@@ -17,7 +17,7 @@ import {
   storeSnapshot,
 } from '../vscode/env';
 import { inspectOfficialExtension, readOfficialGlobalValues, writeOfficialAutonomous } from '../vscode/officialExtension';
-import { findInstalledRogueExtensions, uninstallExtension } from '../vscode/rogueExtensions';
+import { findInstalledRogueExtensions, uninstalledThisSession, uninstallExtension } from '../vscode/rogueExtensions';
 
 /**
  * "Enable autonomous mode":
@@ -165,7 +165,7 @@ export async function enableAutonomousMode(context: vscode.ExtensionContext): Pr
   }
 
   let extsRemoved = 0;
-  const rogueExts = findInstalledRogueExtensions();
+  const rogueExts = findInstalledRogueExtensions().filter((e) => !uninstalledThisSession.has(e.id.toLowerCase()));
   for (const ext of rogueExts) {
     const uninstall = l10n.t('Uninstall');
     const keep = l10n.t('Keep');
