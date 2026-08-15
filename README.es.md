@@ -41,7 +41,7 @@ Claude Code ya trae un modo autónomo. Solo que está repartido en **cuatro ajus
 - **Sin auto-clic ni teclear en el terminal.** Nada que se rompa cuando cambia la interfaz.
 - **Sin cuota, sin contador, sin "pasa a Pro para seguir".**
 - **Nada se ejecuta al arrancar.** La extensión solo se activa cuando lanzas uno de sus comandos.
-- **Sin telemetría, sin red** en las funciones gratuitas. La única llamada de red de toda la extensión es la activación/validación de la licencia Pro, por acción tuya explícita. Ver [PRIVACY.es.md](PRIVACY.es.md).
+- **Sin telemetría, sin red** en las funciones gratuitas. La única llamada de red de toda la extensión es la activación de la licencia Pro y su revalidación cada 24 h, y solo en equipos donde hayas introducido una clave. Ver [PRIVACY.es.md](PRIVACY.es.md).
 
 ## El Doctor
 

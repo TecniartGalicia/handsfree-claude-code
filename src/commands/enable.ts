@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { l10n } from 'vscode';
 import { applyAutonomous, BYPASS_MODE, bypassDisabledByPolicy, findRogueHooks, removeHooksDetailed, RogueHook } from '../core/claudeSettings';
+import { maskSecrets } from '../core/findings';
 import { writeJsonFileAtomic } from '../core/jsonFile';
 import { backupSettingsFile, pruneBackups, sha256, Snapshot } from '../core/snapshot';
 import {
@@ -214,7 +215,7 @@ export async function enableAutonomousMode(context: vscode.ExtensionContext): Pr
 async function offerRemoveHooks(settingsPath: string, settings: Record<string, any>, hooks: RogueHook[]): Promise<{ removed: number; written?: string }> {
   const remove = l10n.t('Remove hook(s)');
   const keep = l10n.t('Keep');
-  const list = hooks.map((h) => `${h.event}${h.matcher ? ` [${h.matcher}]` : ''}: ${h.command}`).join('\n');
+  const list = hooks.map((h) => `${h.event}${h.matcher ? ` [${h.matcher}]` : ''}: ${maskSecrets(h.command)}`).join('\n');
   const pick = await vscode.window.showWarningMessage(
     l10n.t('Your Claude settings contain {0} hook(s) that auto-approve permissions (typically left by a third-party auto-accept tool). They decide permissions before Claude Code does and can override the mode you just enabled.', hooks.length),
     { modal: true, detail: list },
@@ -224,6 +225,6 @@ async function offerRemoveHooks(settingsPath: string, settings: Record<string, a
   if (pick !== remove) return { removed: 0 };
   const { next, removed, skipped } = removeHooksDetailed(settings, hooks);
   const written = removed > 0 ? await writeJsonFileAtomic(settingsPath, next) : undefined;
-  for (const h of hooks) log(`${skipped.includes(h) ? 'Skipped (changed since)' : 'Removed'} hook ${h.event}[${h.groupIndex}].hooks[${h.hookIndex}]: ${h.command}`);
+  for (const h of hooks) log(`${skipped.includes(h) ? 'Skipped (changed since)' : 'Removed'} hook ${h.event}[${h.groupIndex}].hooks[${h.hookIndex}]: ${maskSecrets(h.command)}`);
   return { removed, written };
 }

@@ -18,6 +18,9 @@ npm run package          # .vsix
 ```
 Press F5 in VS Code to launch an Extension Development Host.
 
+## Internal command
+`handsfree._doctorReport` runs the Doctor non-interactively and returns the report object (unredacted paths, same information any extension could read from disk). It exists for the integration tests and the Pro status bar; it is not listed in the palette and is not a public API.
+
 ## Adding a Doctor check
 1. Add the observation to `DoctorInput` (collected in `src/doctor/doctor.ts`).
 2. Emit a `Finding` in `src/core/findings.ts` with a stable `id`, a severity that matches reality (an `error` must mean "Claude will ask because of this"), and a `fix` only when it is safe and reversible.

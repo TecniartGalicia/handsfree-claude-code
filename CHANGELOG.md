@@ -19,7 +19,7 @@ All notable changes to this extension are documented here. Format: [Keep a Chang
 - **Guardrails**: ready-made `ask` / `deny` rule sets (destructive shell, secret files, publishing, cloud infra) that Claude Code enforces even in bypass mode; toggle per set; removal takes only what Handsfree added and is free.
 - **Export / import** of a minimal, validated Handsfree profile (mode keys + ask/deny rules only), with before → after preview and the bypass warning when relevant.
 - **Status bar** indicator after the first Handsfree command in a window.
-- Licence commands: enter key, deactivate, status, get a licence. Offline grace of 14 days; validation throttled to once per 24 h; a bad answer is retried after 24 h. Pro commands stay hidden from the palette in builds without licensing configured.
+- Licence commands: enter key, deactivate, status, get a licence. Offline grace of 14 days; validation throttled to once per 24 h; a bad answer is retried after 24 h.
 
 ### Security
 - Nothing runs at startup; no hooks; no network; no telemetry.

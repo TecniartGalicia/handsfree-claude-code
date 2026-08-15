@@ -117,3 +117,23 @@ Estado: 62 tests unitarios + 4 integración; `vsce package` sin avisos (14 fiche
 | Tests | — | — | +licencia (trampa, re-granted, skew, transitorios, `signal`), guardarraíles (parcial, registro de añadidos), perfil (`plan` previo, restaurar), `parseProfile` estricto, Doctor `ask.rules`; integración comprueba los 13 comandos |
 
 Estado: 78 tests unitarios + 4 integración; `l10n-sync` 230/230; build 72 KB.
+
+## F5 · Lanzamiento (auditoría integral, 2026-08-15) — veredicto: GO condicionado → condiciones aplicadas
+
+| # | Sev. | Hallazgo | Resolución |
+|---|------|----------|------------|
+| H1 | Alta | 0.1.0 anuncia Pro pero sin IDs de Polar el build no lo vende | Orden explícito en TUS-TAREAS (B1–B3 antes de A6) y guardarraíl mecánico: `release.yml` se niega a publicar si `polarConfig.ts` está vacío |
+| M1 | Media | `ovsx get ns.ext@ver` no es sintaxis válida → release no idempotente en Open VSX | `ovsx get ns.ext -v "$VER"` (verificado por el revisor contra ovsx 0.10) |
+| M2 | Media | Puerta `when` de la paleta ocultaba Pro hasta el primer comando en cada ventana | Puerta retirada (Pro debe estar configurado antes de publicar, ver H1) |
+| M3 | Media | TUS-TAREAS incompleto (prueba real de Polar, cuenta Eclipse + Publisher Agreement en Open VSX, `git push main` antes del tag, A5 ya hecho, PAT caduca, publisher ocupado, probar Cursor) | Añadido todo |
+| M4 | Media-baja | PRIVACY/README: la revalidación también la disparan comandos gratuitos y la barra; PRIVACY no listaba lo que escribe Pro | Frases corregidas EN/ES |
+| L1 | Baja | "Remove careful profile … (Pro)" siendo gratis | Etiqueta corregida |
+| L2 | Baja | Ignores de dependabot solo como comentarios en PRs | Codificados en `dependabot.yml` |
+| L3 | Baja | Comentario `# v4` incompleto; Node 20 EOL en CI | `# v4.4.0`; Node 22 en CI/release |
+| L4 | Baja | Modal/log de hooks en Enable sin enmascarar | `maskSecrets` |
+| L5 | Baja | LANZAMIENTO: umbrales internos públicos, anécdota, tagline, "Cursor" sin probar, "exactly as it was" | Umbrales movidos a TUS-TAREAS; matices aplicados |
+| L6 | Baja | Topic `anthropic` en GitHub | Retirado |
+| L7 | Baja | `_doctorReport` sin documentar | Sección en CONTRIBUTING |
+| L8 | Baja | Precio con/sin IVA | Decisión anotada en TUS-TAREAS B2 |
+
+Verificado por el revisor: SHAs de acciones correctos tras dependabot, lock en sincronía, `vsce show --json` expone `versions[]`, `.vsix` de 14 ficheros sin src/docs/scripts/lock, TUS-TAREAS no trackeado, nada al arrancar, única red = Polar, README/PRIVACY coherentes con el código, versiones/licencia consistentes, l10n 230/230, todas las URLs citadas responden.

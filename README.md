@@ -41,7 +41,7 @@ Claude Code already ships an autonomous mode. It's just spread over **four setti
 - **No auto-clicking, no terminal typing.** Nothing to break when the UI changes.
 - **No quota, no counter, no "upgrade to keep going".**
 - **Nothing runs at startup.** The extension activates only when you run one of its commands.
-- **No telemetry, no network** in the free features. The only network call in the whole extension is Pro licence activation/validation, on your explicit action. See [PRIVACY.md](PRIVACY.md).
+- **No telemetry, no network** in the free features. The only network call in the whole extension is Pro licence activation and its 24-hourly re-validation, and only on machines where you entered a licence key. See [PRIVACY.md](PRIVACY.md).
 
 ## The Doctor
 

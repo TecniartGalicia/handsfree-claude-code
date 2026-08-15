@@ -19,9 +19,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - name: Verify tag is on main and matches package.json
@@ -31,6 +31,9 @@ jobs:
           TAG="${GITHUB_REF_NAME#v}"
           PKG="$(node -p "require('./package.json').version")"
           test "$TAG" = "$PKG" || { echo "tag $TAG != package.json $PKG"; exit 1; }
+      - name: Refuse to publish a build whose Pro tier cannot be bought
+        run: |
+          node -e "const s=require('fs').readFileSync('src/pro/polarConfig.ts','utf8'); const org=/POLAR_ORGANIZATION_ID = '([^']*)'/.exec(s)?.[1]; const url=/POLAR_CHECKOUT_URL = '([^']*)'/.exec(s)?.[1]; if(!org||!url){console.error('POLAR_ORGANIZATION_ID / POLAR_CHECKOUT_URL are empty in src/pro/polarConfig.ts — the README and Marketplace listing advertise Pro; fill them (docs/TUS-TAREAS.md, block B) before tagging.'); process.exit(1);} console.log('Pro configured');"
       - run: npm run check
       - run: node scripts/l10n-sync.mjs
       - run: npx vsce package --no-dependencies -o "handsfree-claude-code-${GITHUB_REF_NAME}.vsix"
@@ -49,7 +52,7 @@ jobs:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: |
           VER="${GITHUB_REF_NAME#v}"
-          if npx ovsx get "argalla.handsfree-claude-code@$VER" --metadata >/dev/null 2>&1; then
+          if npx ovsx get argalla.handsfree-claude-code -v "$VER" --metadata >/dev/null 2>&1; then
             echo "Open VSX already has $VER — skipping"
           else
             npx ovsx publish "handsfree-claude-code-${GITHUB_REF_NAME}.vsix" -p "$OVSX_PAT"

@@ -4,7 +4,7 @@
   "cmd.doctor": "Doctor: why is Claude asking for permission?",
   "cfg.claudeSettingsPath": "Path to Claude Code's user settings file. Leave empty to use the default (`~/.claude/settings.json`, or `$CLAUDE_CONFIG_DIR/settings.json` when that variable is set).",
   "cmd.profile.careful": "Mark this project as careful (Pro)",
-  "cmd.profile.remove": "Remove careful profile from this project (Pro)",
+  "cmd.profile.remove": "Remove careful profile from this project",
   "cmd.guardrails": "Guardrails: ask/deny rules that survive bypass mode (Pro)",
   "cmd.export": "Export Handsfree profile (Pro)",
   "cmd.import": "Import Handsfree profile (Pro)",
