@@ -137,3 +137,9 @@ Estado: 78 tests unitarios + 4 integración; `l10n-sync` 230/230; build 72 KB.
 | L8 | Baja | Precio con/sin IVA | Decisión anotada en TUS-TAREAS B2 |
 
 Verificado por el revisor: SHAs de acciones correctos tras dependabot, lock en sincronía, `vsce show --json` expone `versions[]`, `.vsix` de 14 ficheros sin src/docs/scripts/lock, TUS-TAREAS no trackeado, nada al arrancar, única red = Polar, README/PRIVACY coherentes con el código, versiones/licencia consistentes, l10n 230/230, todas las URLs citadas responden.
+
+## Publicación 0.1.0 (2026-08-15) — nota de operación
+
+- Marketplace: https://marketplace.visualstudio.com/items?itemName=argalla.handsfree-claude-code · Open VSX: https://open-vsx.org/extension/argalla/handsfree-claude-code · Release: tag `v0.1.0`.
+- El chequeo de contenido del Marketplace rechazó el primer intento ("Your extension has suspicious content"). Bisección con extensiones vacías de diagnóstico (después despublicadas): código, README, icono, nls, keywords y `contributes` pasaban; **el disparador era la frase de `description` "why … keeps asking for permission"**. Se reformuló ("why you still get permission prompts") y la 0.1.0 pasó con el resto del paquete intacto.
+- Aprendido para futuras versiones: (1) un ID despublicado no se puede reutilizar y un `displayName` despublicado queda reservado; (2) `vsce show --json` imprime `undefined` (no JSON) cuando el ID no existe: `release.yml` lo trata ahora como "no publicado"; (3) `ovsx publish` responde "Published" pero la ficha tarda ~1 min en aparecer en la API pública; (4) el namespace `argalla` de Open VSX se reclama en EclipseFdn/open-vsx.org#12545.
