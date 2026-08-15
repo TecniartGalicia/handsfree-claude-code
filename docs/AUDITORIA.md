@@ -143,3 +143,22 @@ Verificado por el revisor: SHAs de acciones correctos tras dependabot, lock en s
 - Marketplace: https://marketplace.visualstudio.com/items?itemName=argalla.handsfree-claude-code · Open VSX: https://open-vsx.org/extension/argalla/handsfree-claude-code · Release: tag `v0.1.0`.
 - El chequeo de contenido del Marketplace rechazó el primer intento ("Your extension has suspicious content"). Bisección con extensiones vacías de diagnóstico (después despublicadas): código, README, icono, nls, keywords y `contributes` pasaban; **el disparador era la frase de `description` "why … keeps asking for permission"**. Se reformuló ("why you still get permission prompts") y la 0.1.0 pasó con el resto del paquete intacto.
 - Aprendido para futuras versiones: (1) un ID despublicado no se puede reutilizar y un `displayName` despublicado queda reservado; (2) `vsce show --json` imprime `undefined` (no JSON) cuando el ID no existe: `release.yml` lo trata ahora como "no publicado"; (3) `ovsx publish` responde "Published" pero la ficha tarda ~1 min en aparecer en la API pública; (4) el namespace `argalla` de Open VSX se reclama en EclipseFdn/open-vsx.org#12545.
+
+## F6 · Prueba en vivo de Polar y auditoría de la 0.1.1 (2026-08-15)
+
+**Método.** Cuenta Polar aprobada → cupón del 100 % de un solo uso → checkout real a 0 € (correo del titular) → clave real → activar / validar / desactivar / deshabilitar / rehabilitar / revocar contra `api.polar.sh` con el código compilado de la extensión (`out/core/license.js`); segunda clave para el caso "activación retirada". Después: claves revocadas y cupones borrados (no queda ninguna licencia gratuita viva).
+
+**Hechos observados (no estaban en la documentación que usó la F4):**
+| Llamada | Respuesta real |
+|---|---|
+| Ráfaga de ~3-4 llamadas en 30 s | `429` + `Retry-After: 30` (cualquier endpoint) |
+| `validate` clave revocada o deshabilitada | `404 {"error":"ResourceNotFound","detail":"License key is no longer active."}` |
+| `validate` clave desconocida, o clave válida + `activation_id` desactivado/aleatorio | `404 {"error":"ResourceNotFound","detail":"Not found"}` (indistinguibles por el cuerpo) |
+| `validate` con `organization_id` mal formado | `422 RequestValidationError` |
+| `activate` clave revocada | `403 {"error":"NotPermitted","detail":"License key is no longer active. This license key can not be activated."}` |
+| `deactivate` | `204` sin cuerpo; validar después con ese `activation_id` → 404 "Not found"; por clave sola → 200 granted |
+| Rehabilitar tras deshabilitar | vuelve a `200 status=granted` |
+
+**Cambios en la 0.1.1 (resumen; detalle en CHANGELOG):** reintento único ante 429 honrando `Retry-After` (tope 60 s) solo en llamadas del usuario (activar, desactivar, estado forzado; el fondo nunca espera) + tipo `busy` con mensaje claro; 404 con la forma exacta `ResourceNotFound` = respuesta definitiva (revocada → OFF ya, se repregunta a las 24 h; "Not found" con `activation_id` → 2ª llamada por clave sola para distinguir "activación retirada" de "clave desconocida"); un estado negativo persistido no resucita por gracia; activar antes de liberar el hueco antiguo (y, si se liberó y falló, se persiste `activation-removed`); progreso en desactivar/estado y activación cancelable.
+
+**Auditoría independiente del cambio (agente):** MEDIA — la vía "misma clave al límite" liberaba el hueco ante cualquier `limit` y podía dejar un `activationId` muerto (→ solo si el mensaje dice *limit*, y se persiste `activation-removed` con aviso); MEDIA-BAJA — `activation_id` obsoleto se leía como "clave no reconocida" (→ 2ª llamada por clave, razón `activation-removed`, textos EN/ES); BAJA-MEDIA — estado negativo resucitaba por gracia ante fallo de red (→ corregido); BAJA — `not-found`→`revoked` incoherente (→ `reasonForStatus`), esperas sin progreso ni cancelación (→ `withProgress` + cancelable), detección "definitiva" laxa (→ exige `error === 'ResourceNotFound'`), comentarios desfasados, `opts` sustituía los defaults (→ `{ retryBusy: true, ...opts }`), tests sin la rama `headers` ausente (→ añadido). Todo aplicado; 82 tests unitarios; rutas nuevas verificadas también contra la API real.

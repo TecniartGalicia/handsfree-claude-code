@@ -11,9 +11,13 @@
  *  - A licence validated within REVALIDATE_HOURS is Pro without touching the network.
  *  - Offline grace: a licence last *validated* within GRACE_DAYS keeps working when the network is down
  *    or the API answers something we do not understand.
- *  - A non-granted status is never final: we ask again after REVALIDATE_HOURS (disputes get resolved,
- *    activations get restored, APIs have bad days). Only a 200 with an explicit non-"granted" status
- *    is persisted as such; 4xx answers are treated as soft failures.
+ *  - A negative answer is never final: we ask again after REVALIDATE_HOURS (disputes get resolved,
+ *    activations get restored, APIs have bad days). What is persisted as a non-"granted" status: a 200 with an
+ *    explicit status, or a *definitive* 404 from Polar (observed 2026-08: revoked/disabled key →
+ *    {"error":"ResourceNotFound","detail":"License key is no longer active."}; unknown key or unknown/deactivated
+ *    activation → {"error":"ResourceNotFound","detail":"Not found"}). Any other 4xx/5xx is a soft failure.
+ *  - Rate limit: the endpoints answer 429 + Retry-After (≈30 s) after a handful of calls; user-initiated calls
+ *    may wait once (CallOptions.retryBusy), background validation never does.
  */
 export const POLAR_BASE = 'https://api.polar.sh/v1/customer-portal/license-keys';
 export const GRACE_DAYS = 14;
@@ -27,13 +31,13 @@ export interface LicenseState {
   lastValidatedAt?: string;
   /** ISO of the last time we asked the API (any outcome) — throttles retries after a bad answer. */
   lastCheckedAt?: string;
-  /** Last explicit status from a 200 answer. */
-  status?: 'granted' | 'revoked' | 'disabled' | 'expired' | string;
+  /** Last explicit status: from a 200 answer, or derived from a definitive 404 ('not-found', 'activation-removed'). */
+  status?: 'granted' | 'revoked' | 'disabled' | 'expired' | 'not-found' | 'activation-removed' | string;
   expiresAt?: string | null;
   label?: string;
 }
 
-export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; json(): Promise<any> }>;
+export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; json(): Promise<any>; headers?: { get(name: string): string | null } }>;
 
 export interface PolarConfig {
   organizationId: string;
@@ -42,7 +46,15 @@ export interface PolarConfig {
 
 export type ProDecision =
   | { pro: true; source: 'dev' | 'validated' | 'grace' }
-  | { pro: false; reason: 'no-key' | 'not-configured' | 'invalid' | 'expired' | 'grace-expired' | 'revoked' | 'network' };
+  | { pro: false; reason: 'no-key' | 'not-configured' | 'invalid' | 'expired' | 'grace-expired' | 'revoked' | 'activation-removed' | 'network' };
+
+/** Maps a persisted non-"granted" status to the reason shown to the user. */
+export function reasonForStatus(status: string): 'expired' | 'revoked' | 'invalid' | 'activation-removed' {
+  if (status === 'expired') return 'expired';
+  if (status === 'not-found') return 'invalid';
+  if (status === 'activation-removed') return 'activation-removed';
+  return 'revoked';
+}
 
 const H = 3600_000;
 const D = 86400_000;
@@ -65,7 +77,7 @@ export function decideOffline(state: LicenseState, now: Date, devOverride = fals
   const checkedAge = ageMs(state.lastCheckedAt, now);
   const recentlyChecked = checkedAge !== undefined && checkedAge >= 0 && checkedAge < REVALIDATE_HOURS * H;
   if (state.status && state.status !== 'granted') {
-    return recentlyChecked ? { pro: false, reason: state.status === 'expired' ? 'expired' : 'revoked' } : undefined;
+    return recentlyChecked ? { pro: false, reason: reasonForStatus(state.status) } : undefined;
   }
   if (state.expiresAt && new Date(state.expiresAt).getTime() < now.getTime()) {
     return recentlyChecked ? { pro: false, reason: 'expired' } : undefined;
@@ -75,7 +87,20 @@ export function decideOffline(state: LicenseState, now: Date, devOverride = fals
   return undefined; // due (or clock skew) → revalidate
 }
 
-export type ValidationResult = { ok: true; status: string; expiresAt?: string | null } | { ok: false; kind: 'network' | 'invalid' };
+/**
+ * `definitive` marks an explicit negative from Polar (404 with an error body: revoked, disabled or unknown key)
+ * as opposed to a 4xx we cannot interpret; only definitive answers switch Pro off at once (see decideAfterValidation).
+ */
+export type ValidationResult =
+  | { ok: true; status: string; expiresAt?: string | null }
+  | {
+      ok: false;
+      kind: 'network' | 'invalid';
+      definitive?: boolean;
+      detail?: string;
+      /** The key itself is fine, but this computer's activation no longer exists (deactivated from the portal / elsewhere). */
+      activationGone?: boolean;
+    };
 
 /** Applies a validation attempt's outcome. Always records lastCheckedAt. */
 export function decideAfterValidation(state: LicenseState, now: Date, result: ValidationResult): { decision: ProDecision; next: LicenseState } {
@@ -89,8 +114,17 @@ export function decideAfterValidation(state: LicenseState, now: Date, result: Va
     }
     return { decision: { pro: false, reason: result.status === 'expired' || expired ? 'expired' : 'revoked' }, next };
   }
-  // Soft failure (network, or an answer we do not understand / 4xx): honour the grace period.
+  if (result.kind === 'invalid' && result.definitive) {
+    // Polar said so explicitly. Off now; decideOffline keeps this answer for REVALIDATE_HOURS and then asks again,
+    // so a re-enabled key comes back on its own (no permanent trap). The stale activation id is kept on purpose:
+    // an activation removed elsewhere must be re-created here (enter the key again), not silently bypassed.
+    const status = result.activationGone ? 'activation-removed' : /no longer active/i.test(result.detail ?? '') ? 'revoked' : 'not-found';
+    return { decision: { pro: false, reason: reasonForStatus(status) }, next: { ...state, status, lastCheckedAt: nowIso } };
+  }
   const next: LicenseState = { ...state, lastCheckedAt: nowIso };
+  // A persisted negative answer does not come back through the grace period: only a fresh positive answer does.
+  if (state.status && state.status !== 'granted') return { decision: { pro: false, reason: reasonForStatus(state.status) }, next };
+  // Soft failure (network, or an answer we do not understand / 4xx): honour the grace period.
   const validatedAge = ageMs(state.lastValidatedAt, now);
   if (validatedAge !== undefined && validatedAge < GRACE_DAYS * D) {
     // negative age (clock skew) counts as "recent"
@@ -116,29 +150,54 @@ function detailText(data: any, fallback: string): string {
   return fallback;
 }
 
-async function post(fetchImpl: FetchLike, path: string, body: Record<string, unknown>): Promise<{ ok: boolean; status: number; data: any }> {
-  const signal = typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? (AbortSignal as any).timeout(REQUEST_TIMEOUT_MS) : undefined;
-  const res = await fetchImpl(`${POLAR_BASE}/${path}`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(body), signal });
-  let data: any = undefined;
-  try {
-    data = await res.json();
-  } catch {
-    data = undefined;
+/** Polar's customer-portal licence endpoints are rate limited (observed: HTTP 429 + `Retry-After: 30` after a handful of calls). */
+export const BUSY_MAX_WAIT_MS = 60_000;
+export const BUSY_DEFAULT_WAIT_MS = 30_000;
+export type SleepLike = (ms: number) => Promise<void>;
+const defaultSleep: SleepLike = (ms) => new Promise((r) => setTimeout(r, ms));
+
+export interface CallOptions {
+  /** Retry once after a 429, waiting Retry-After (capped). Only for user-initiated calls shown behind a progress UI. */
+  retryBusy?: boolean;
+  sleep?: SleepLike;
+  /** Checked after the wait: a cancelled operation returns the 429 as is instead of retrying. */
+  isCancelled?: () => boolean;
+}
+
+async function post(fetchImpl: FetchLike, path: string, body: Record<string, unknown>, opts: CallOptions = {}): Promise<{ ok: boolean; status: number; data: any }> {
+  const once = async () => {
+    const signal = typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? (AbortSignal as any).timeout(REQUEST_TIMEOUT_MS) : undefined;
+    const res = await fetchImpl(`${POLAR_BASE}/${path}`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(body), signal });
+    let data: any = undefined;
+    try {
+      data = await res.json();
+    } catch {
+      data = undefined;
+    }
+    return { ok: res.ok, status: res.status, data, res };
+  };
+  let r = await once();
+  if (r.status === 429 && opts.retryBusy) {
+    const ra = Number(r.res.headers?.get?.('retry-after'));
+    const wait = Number.isFinite(ra) && ra > 0 ? Math.min(ra * 1000 + 500, BUSY_MAX_WAIT_MS) : BUSY_DEFAULT_WAIT_MS;
+    await (opts.sleep ?? defaultSleep)(wait);
+    if (!opts.isCancelled?.()) r = await once();
   }
-  return { ok: res.ok, status: res.status, data };
+  return { ok: r.ok, status: r.status, data: r.data };
 }
 
 const TRANSIENT = new Set([408, 425, 429, 500, 502, 503, 504]);
 
-export async function polarActivate(fetchImpl: FetchLike, cfg: PolarConfig, key: string, label: string, meta: Record<string, string>): Promise<{ ok: true; activationId: string; status: string; expiresAt?: string | null } | { ok: false; kind: 'network' | 'invalid' | 'limit' | 'unexpected'; message: string }> {
+export async function polarActivate(fetchImpl: FetchLike, cfg: PolarConfig, key: string, label: string, meta: Record<string, string>, opts: CallOptions = {}): Promise<{ ok: true; activationId: string; status: string; expiresAt?: string | null } | { ok: false; kind: 'network' | 'busy' | 'invalid' | 'limit' | 'unexpected'; message: string }> {
   try {
-    const r = await post(fetchImpl, 'activate', { key, organization_id: cfg.organizationId, label, meta });
+    const r = await post(fetchImpl, 'activate', { key, organization_id: cfg.organizationId, label, meta }, { retryBusy: true, ...opts });
     if (r.ok && r.data && typeof r.data.id === 'string') {
       const lk = r.data.license_key ?? {};
       return { ok: true, activationId: r.data.id, status: String(lk.status ?? 'granted'), expiresAt: lk.expires_at ?? null };
     }
     if (r.ok) return { ok: false, kind: 'unexpected', message: 'Unexpected answer from the licence server' };
     if (r.status === 404) return { ok: false, kind: 'invalid', message: 'License key not found' };
+    if (r.status === 429) return { ok: false, kind: 'busy', message: 'HTTP 429' };
     if (TRANSIENT.has(r.status)) return { ok: false, kind: 'network', message: `HTTP ${r.status}` };
     if (r.status === 403 || r.status === 422 || r.status === 400) return { ok: false, kind: 'limit', message: detailText(r.data, `HTTP ${r.status}`) };
     return { ok: false, kind: 'invalid', message: detailText(r.data, `HTTP ${r.status}`) };
@@ -147,12 +206,25 @@ export async function polarActivate(fetchImpl: FetchLike, cfg: PolarConfig, key:
   }
 }
 
-export async function polarValidate(fetchImpl: FetchLike, cfg: PolarConfig, key: string, activationId?: string): Promise<ValidationResult> {
+export async function polarValidate(fetchImpl: FetchLike, cfg: PolarConfig, key: string, activationId?: string, opts: CallOptions = {}): Promise<ValidationResult> {
   try {
     const body: Record<string, unknown> = { key, organization_id: cfg.organizationId };
     if (activationId) body.activation_id = activationId;
-    const r = await post(fetchImpl, 'validate', body);
+    const r = await post(fetchImpl, 'validate', body, opts);
     if (r.ok && r.data && typeof r.data.status === 'string') return { ok: true, status: r.data.status, expiresAt: r.data.expires_at ?? null };
+    // Observed on api.polar.sh (2026-08-15): revoked/disabled key → 404 {"error":"ResourceNotFound","detail":"License key is no longer active."};
+    // unknown key, or a valid key with an unknown/deactivated activation_id → 404 {"error":"ResourceNotFound","detail":"Not found"}.
+    // Only that exact shape counts as definitive (a proxy's 404 page never does).
+    if (r.status === 404 && r.data && typeof r.data === 'object' && r.data.error === 'ResourceNotFound' && typeof r.data.detail === 'string') {
+      const detail = detailText(r.data, '');
+      if (activationId && !/no longer active/i.test(detail)) {
+        // "Not found" with an activation id: the key may be fine and only this computer's activation gone. Ask about the key alone.
+        const r2 = await post(fetchImpl, 'validate', { key, organization_id: cfg.organizationId }, opts);
+        if (r2.ok && r2.data && typeof r2.data.status === 'string') return { ok: false, kind: 'invalid', definitive: true, detail, activationGone: true };
+        if (!(r2.status === 404 && r2.data && typeof r2.data === 'object' && r2.data.error === 'ResourceNotFound')) return { ok: false, kind: r2.status >= 500 || r2.status === 429 ? 'network' : 'invalid' }; // could not tell → soft
+      }
+      return { ok: false, kind: 'invalid', definitive: true, detail };
+    }
     if (r.status === 404 || r.status === 403 || r.status === 422 || r.status === 400) return { ok: false, kind: 'invalid' };
     return { ok: false, kind: 'network' };
   } catch {
@@ -160,9 +232,9 @@ export async function polarValidate(fetchImpl: FetchLike, cfg: PolarConfig, key:
   }
 }
 
-export async function polarDeactivate(fetchImpl: FetchLike, cfg: PolarConfig, key: string, activationId: string): Promise<boolean> {
+export async function polarDeactivate(fetchImpl: FetchLike, cfg: PolarConfig, key: string, activationId: string, opts: CallOptions = {}): Promise<boolean> {
   try {
-    const r = await post(fetchImpl, 'deactivate', { key, organization_id: cfg.organizationId, activation_id: activationId });
+    const r = await post(fetchImpl, 'deactivate', { key, organization_id: cfg.organizationId, activation_id: activationId }, { retryBusy: true, ...opts });
     return r.ok || r.status === 404;
   } catch {
     return false;

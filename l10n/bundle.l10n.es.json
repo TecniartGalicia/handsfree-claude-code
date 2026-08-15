@@ -228,5 +228,11 @@
   "expired": "caducada",
   "offline for more than 14 days": "sin conexión más de 14 días",
   "revoked": "revocada",
-  "could not reach the licence server": "no se pudo contactar con el servidor de licencias"
+  "could not reach the licence server": "no se pudo contactar con el servidor de licencias",
+  "The licence server is busy right now (rate limit). Wait a minute and try again.": "El servidor de licencias está saturado ahora mismo (límite de peticiones). Espera un minuto y vuelve a intentarlo.",
+  "This computer's activation of your Handsfree Pro key was removed (from the Polar customer portal or by activating elsewhere). Enter the key again to re-activate.": "La activación de tu clave de Handsfree Pro en este equipo se retiró (desde el portal de cliente de Polar o al activarla en otro sitio). Vuelve a introducir la clave para reactivarla.",
+  "This computer's previous activation was released in the process; enter the key again in a minute.": "En el proceso se liberó la activación anterior de este equipo; vuelve a introducir la clave dentro de un minuto.",
+  "Deactivating Handsfree Pro…": "Desactivando Handsfree Pro…",
+  "this computer's activation was removed — enter the key again": "la activación de este equipo se retiró: vuelve a introducir la clave",
+  "Checking Handsfree Pro licence…": "Comprobando la licencia de Handsfree Pro…"
 }

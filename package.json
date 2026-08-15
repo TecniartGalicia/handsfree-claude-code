@@ -2,7 +2,7 @@
   "name": "handsfree-claude-code",
   "displayName": "Handsfree for Claude Code",
   "description": "Autonomous mode for Claude Code in one command: native settings only, no hooks, no quotas. Plus a Doctor that explains why you still get permission prompts. Not affiliated with Anthropic.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "argalla",
   "license": "MIT",
   "author": {

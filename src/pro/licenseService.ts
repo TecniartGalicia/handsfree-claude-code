@@ -58,7 +58,7 @@ export async function proStatus(context: vscode.ExtensionContext, force = false)
       if (!decision) {
         if (!polarConfigured()) decision = { pro: false, reason: 'not-configured' };
         else {
-          const result = await polarValidate(fetchImpl, cfg(), state.key!, state.activationId);
+          const result = await polarValidate(fetchImpl, cfg(), state.key!, state.activationId, { retryBusy: force });
           const r = decideAfterValidation(state, now, result);
           decision = r.decision;
           await saveState(context, r.next);
@@ -102,6 +102,9 @@ export async function ensurePro(context: vscode.ExtensionContext, feature: strin
     case 'invalid':
       msg = l10n.t('Your Handsfree Pro licence key is not valid any more.');
       break;
+    case 'activation-removed':
+      msg = l10n.t("This computer's activation of your Handsfree Pro key was removed (from the Polar customer portal or by activating elsewhere). Enter the key again to re-activate.");
+      break;
     case 'grace-expired':
       msg = l10n.t('Handsfree Pro could not be re-validated for more than 14 days (no network). Connect once and try again.');
       break;
@@ -143,21 +146,56 @@ export async function activateLicenseCommand(context: vscode.ExtensionContext): 
   const label = os.hostname();
   const meta = { platform: process.platform, extension: String((context.extension.packageJSON as any)?.version ?? '?') };
   const previous = await loadState(context);
-  const r = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: l10n.t('Activating Handsfree Pro…') }, async () => {
-    // Re-activating on the same computer: free the old slot first so it does not leak.
-    if (previous.key && previous.activationId) await polarDeactivate(fetchImpl, cfg(), previous.key, previous.activationId);
-    return polarActivate(fetchImpl, cfg(), trimmed, label, meta);
+  let oldSlotFreed = false;
+  const r = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: l10n.t('Activating Handsfree Pro…'), cancellable: true }, async (_p, token) => {
+    // A 429 from Polar means waiting up to 60 s (Retry-After); the user can cancel that wait.
+    const opts = {
+      isCancelled: () => token.isCancellationRequested,
+      sleep: (ms: number) =>
+        new Promise<void>((resolve) => {
+          const t = setTimeout(resolve, ms);
+          token.onCancellationRequested(() => {
+            clearTimeout(t);
+            resolve();
+          });
+        }),
+    };
+    // Activate first, then free the slot of a previous activation on this computer (best effort). Doing it in this
+    // order means a failed activation never leaves the user without their old, working activation.
+    let res = await polarActivate(fetchImpl, cfg(), trimmed, label, meta, opts);
+    const hadSlot = !!(previous.key && previous.activationId);
+    if (!res.ok && res.kind === 'limit' && /limit/i.test(res.message) && hadSlot && previous.key === trimmed) {
+      // Same key at its activation limit: our own old slot on this computer may be the one in the way — free it, try once more.
+      if (await polarDeactivate(fetchImpl, cfg(), previous.key!, previous.activationId!, opts)) {
+        oldSlotFreed = true;
+        res = await polarActivate(fetchImpl, cfg(), trimmed, label, meta, opts);
+      }
+    } else if (res.ok && hadSlot && previous.activationId !== res.activationId) {
+      const freed = await polarDeactivate(fetchImpl, cfg(), previous.key!, previous.activationId!, opts);
+      if (!freed) log(`Previous activation ${previous.activationId} could not be freed on Polar (rate limit or network); it may still count until deactivated from the customer portal.`);
+    }
+    return res;
   });
+  if (!r.ok && oldSlotFreed) {
+    // We released this computer's old activation and could not create the new one: record that honestly (Pro off
+    // until the key is entered again) instead of keeping a dead activation id around.
+    await saveState(context, { ...previous, status: 'activation-removed', lastCheckedAt: new Date().toISOString() });
+    invalidateProCache();
+    log(`Old activation ${previous.activationId} freed but re-activation failed (${r.kind}); state marked activation-removed`);
+  }
   if (!r.ok) {
     const why =
       r.kind === 'invalid'
         ? l10n.t('The key was not recognised.')
         : r.kind === 'limit'
           ? l10n.t('This key has reached its activation limit or is not active: {0}. Deactivate it on another computer or contact support.', r.message)
-          : r.kind === 'unexpected'
-            ? l10n.t('The licence server answered something unexpected. Please try again later or contact support.')
-            : l10n.t('Network problem: {0}', r.message);
-    void vscode.window.showErrorMessage(l10n.t('Could not activate Handsfree Pro. {0}', why));
+          : r.kind === 'busy'
+            ? l10n.t('The licence server is busy right now (rate limit). Wait a minute and try again.')
+            : r.kind === 'unexpected'
+              ? l10n.t('The licence server answered something unexpected. Please try again later or contact support.')
+              : l10n.t('Network problem: {0}', r.message);
+    const note = oldSlotFreed ? ' ' + l10n.t("This computer's previous activation was released in the process; enter the key again in a minute.") : '';
+    void vscode.window.showErrorMessage(l10n.t('Could not activate Handsfree Pro. {0}', why) + note);
     return;
   }
   const nowIso = new Date().toISOString();
@@ -179,7 +217,7 @@ export async function deactivateLicenseCommand(context: vscode.ExtensionContext)
   const pick = await vscode.window.showWarningMessage(l10n.t('Deactivate Handsfree Pro on this computer? The activation slot is freed so you can use the key elsewhere.'), { modal: true }, yes);
   if (pick !== yes) return;
   if (state.activationId && polarConfigured()) {
-    const ok = await polarDeactivate(fetchImpl, cfg(), state.key, state.activationId);
+    const ok = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: l10n.t('Deactivating Handsfree Pro…') }, () => polarDeactivate(fetchImpl, cfg(), state.key!, state.activationId!));
     if (!ok) void vscode.window.showWarningMessage(l10n.t('Polar could not be reached; the key was removed from this computer but the activation slot may still count until you deactivate it from your Polar customer portal.'));
   }
   await saveState(context, {});
@@ -211,13 +249,15 @@ function reasonText(d: ProDecision): string {
       return l10n.t('offline for more than 14 days');
     case 'revoked':
       return l10n.t('revoked');
+    case 'activation-removed':
+      return l10n.t("this computer's activation was removed — enter the key again");
     default:
       return l10n.t('could not reach the licence server');
   }
 }
 
 export async function licenseStatusCommand(context: vscode.ExtensionContext): Promise<void> {
-  const d = await proStatus(context, true);
+  const d = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: l10n.t('Checking Handsfree Pro licence…') }, () => proStatus(context, true));
   const state = await loadState(context);
   const lines = [
     d.pro ? l10n.t('Handsfree Pro: active ({0})', reasonText(d)) : l10n.t('Handsfree Pro: not active ({0})', reasonText(d)),
