@@ -2,5 +2,14 @@
   "cmd.enable": "Activar modo autónomo",
   "cmd.revert": "Revertir a la configuración anterior",
   "cmd.doctor": "Doctor: ¿por qué Claude pide permiso?",
-  "cfg.claudeSettingsPath": "Ruta al fichero de configuración de usuario de Claude Code. Déjalo vacío para usar el predeterminado (`~/.claude/settings.json`, o `$CLAUDE_CONFIG_DIR/settings.json` si esa variable está definida)."
+  "cfg.claudeSettingsPath": "Ruta al fichero de configuración de usuario de Claude Code. Déjalo vacío para usar el predeterminado (`~/.claude/settings.json`, o `$CLAUDE_CONFIG_DIR/settings.json` si esa variable está definida).",
+  "cmd.profile.careful": "Marcar este proyecto como prudente (Pro)",
+  "cmd.profile.remove": "Quitar el perfil prudente de este proyecto (Pro)",
+  "cmd.guardrails": "Guardarraíles: reglas ask/deny que sobreviven al modo bypass (Pro)",
+  "cmd.export": "Exportar perfil de Handsfree (Pro)",
+  "cmd.import": "Importar perfil de Handsfree (Pro)",
+  "cmd.pro.activate": "Pro: introducir clave de licencia",
+  "cmd.pro.deactivate": "Pro: desactivar la licencia en este equipo",
+  "cmd.pro.status": "Pro: estado de la licencia",
+  "cmd.pro.buy": "Pro: conseguir una licencia"
 }

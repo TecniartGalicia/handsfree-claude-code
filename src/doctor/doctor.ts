@@ -19,6 +19,12 @@ export type { DoctorReport } from '../core/report';
 /** Per-file read timeout so a hung network drive cannot freeze the Doctor. */
 const READ_TIMEOUT_MS = 5000;
 
+/** Set by the extension: which project settings.local.json files are Handsfree "careful" profiles. */
+let ownedProfileProvider: () => Promise<string[]> = async () => [];
+export function setOwnedProfileProvider(fn: () => Promise<string[]>): void {
+  ownedProfileProvider = fn;
+}
+
 /** Collects everything the pure evaluator needs. Never throws for a single unreadable file. */
 export async function collect(): Promise<DoctorInput> {
   const claudePath = resolveClaudeSettingsPath();
@@ -56,6 +62,7 @@ export async function collect(): Promise<DoctorInput> {
     rogueExtensions: findInstalledRogueExtensions(),
     uninstalledPendingReload: [...uninstalledThisSession],
     workspaceFiles,
+    ownedProfilePaths: await ownedProfileProvider(),
   };
 }
 

@@ -73,6 +73,51 @@
         "command": "handsfree.doctor",
         "title": "%cmd.doctor%",
         "category": "Handsfree"
+      },
+      {
+        "command": "handsfree.profile.careful",
+        "title": "%cmd.profile.careful%",
+        "category": "Handsfree"
+      },
+      {
+        "command": "handsfree.profile.remove",
+        "title": "%cmd.profile.remove%",
+        "category": "Handsfree"
+      },
+      {
+        "command": "handsfree.guardrails",
+        "title": "%cmd.guardrails%",
+        "category": "Handsfree"
+      },
+      {
+        "command": "handsfree.export",
+        "title": "%cmd.export%",
+        "category": "Handsfree"
+      },
+      {
+        "command": "handsfree.import",
+        "title": "%cmd.import%",
+        "category": "Handsfree"
+      },
+      {
+        "command": "handsfree.pro.activate",
+        "title": "%cmd.pro.activate%",
+        "category": "Handsfree"
+      },
+      {
+        "command": "handsfree.pro.deactivate",
+        "title": "%cmd.pro.deactivate%",
+        "category": "Handsfree"
+      },
+      {
+        "command": "handsfree.pro.status",
+        "title": "%cmd.pro.status%",
+        "category": "Handsfree"
+      },
+      {
+        "command": "handsfree.pro.buy",
+        "title": "%cmd.pro.buy%",
+        "category": "Handsfree"
       }
     ],
     "configuration": {
@@ -114,7 +159,7 @@
     "typescript": "^5.8.0",
     "ovsx": "^0.10.0"
   },
-  "pricing": "Free",
+  "pricing": "Trial",
   "qna": "https://github.com/TecniartGalicia/handsfree-claude-code/discussions",
   "preview": true
 }

@@ -41,7 +41,7 @@ Claude Code ya trae un modo autónomo. Solo que está repartido en **cuatro ajus
 - **Sin auto-clic ni teclear en el terminal.** Nada que se rompa cuando cambia la interfaz.
 - **Sin cuota, sin contador, sin "pasa a Pro para seguir".**
 - **Nada se ejecuta al arrancar.** La extensión solo se activa cuando lanzas uno de sus comandos.
-- **Sin telemetría, sin red.** Ver [PRIVACY.es.md](PRIVACY.es.md).
+- **Sin telemetría, sin red** en las funciones gratuitas. La única llamada de red de toda la extensión es la activación/validación de la licencia Pro, por acción tuya explícita. Ver [PRIVACY.es.md](PRIVACY.es.md).
 
 ## El Doctor
 
@@ -67,6 +67,19 @@ Cada comprobación trae un arreglo a un clic cuando es seguro:
 - **Revertir es real.** Restaura el fichero original y las dos claves de VS Code, y antes copia el fichero actual. Activar → Activar → Revertir sigue volviendo al estado original.
 - **Nunca sobre un fichero roto.** Si `settings.json` es inválido no se escribe nada; el Doctor lo abre en la línea del error.
 - **El modo bypass es de Anthropic, con las reglas de Anthropic — y con su aviso.** La recomendación oficial es usarlo *solo en entornos aislados como contenedores, VMs o dev containers sin acceso a internet, donde Claude Code no pueda dañar tu equipo*. Las reglas `ask` y `deny` siguen aplicando, `rm -rf /` y `rm -rf ~` siguen preguntando (cortacircuitos), y Claude Code se niega a arrancar en este modo como root. Lee la [página oficial](https://code.claude.com/docs/en/permission-modes) antes de activarlo.
+
+## Pro
+
+La versión gratuita conserva **Activar, Revertir y el Doctor para siempre**: es la razón de ser de la extensión y nunca se bloqueará. Pro es una licencia de pago único (7 €) para lo que ahorra tiempo cuando ya te fías:
+
+| Función Pro | Qué hace |
+| :-- | :-- |
+| **Perfil prudente por proyecto** | *"Handsfree: Marcar este proyecto como prudente"* escribe `permissions.disableBypassPermissionsMode = "disable"` y `defaultMode = "default"` en el `.claude/settings.local.json` de ese proyecto. Claude Code rechaza bypass ahí (terminal y VS Code) mientras el resto de proyectos siguen autónomos. Se quita con un comando. |
+| **Guardarraíles** | Conjuntos listos de reglas `ask` / `deny` que Claude Code aplica **incluso en modo bypass**: preguntar antes de comandos de shell destructivos, no leer nunca `.env` / claves / `~/.ssh`, preguntar antes de publicar paquetes, preguntar antes de tocar infraestructura en la nube. Reglas nativas, sin hooks; se activan y desactivan por conjuntos. |
+| **Exportar / importar** | Un JSON pequeño solo con las claves de modo de permisos y tus reglas ask/deny (nunca reglas allow, valores `env` ni hooks), para montar un segundo equipo o compartir con el equipo. |
+| **Barra de estado** | Tras el primer comando de Handsfree en una ventana: indicador verde / aviso / "prudente", clic para el Doctor. |
+
+Las licencias se venden a través de [Polar](https://polar.sh) (merchant of record: factura y gestiona el IVA). La activación envía tu clave y el nombre de este equipo a Polar, nada más; la licencia sigue funcionando sin conexión 14 días entre comprobaciones. Tres equipos por clave; desactiva para moverla. Ver [PRIVACY.es.md](PRIVACY.es.md).
 
 ## Requisitos
 

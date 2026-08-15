@@ -41,7 +41,7 @@ Claude Code already ships an autonomous mode. It's just spread over **four setti
 - **No auto-clicking, no terminal typing.** Nothing to break when the UI changes.
 - **No quota, no counter, no "upgrade to keep going".**
 - **Nothing runs at startup.** The extension activates only when you run one of its commands.
-- **No telemetry, no network.** See [PRIVACY.md](PRIVACY.md).
+- **No telemetry, no network** in the free features. The only network call in the whole extension is Pro licence activation/validation, on your explicit action. See [PRIVACY.md](PRIVACY.md).
 
 ## The Doctor
 
@@ -67,6 +67,19 @@ Each check comes with a one-click fix where one is safe:
 - **Revert is real.** It restores the original file and the two VS Code keys, and takes a copy of the current file first. Enable → Enable → Revert still returns to the original state.
 - **Never on a broken file.** If `settings.json` is invalid, nothing is written; the Doctor opens it at the offending line.
 - **Bypass mode is Anthropic's, with Anthropic's rules — and Anthropic's warning.** The official guidance is to use it *only in isolated environments like containers, VMs or dev containers without internet access, where Claude Code cannot damage your host system*. `ask` and `deny` rules still apply, `rm -rf /` and `rm -rf ~` still prompt (circuit breaker), and Claude Code refuses to run in this mode as root. Read the [official page](https://code.claude.com/docs/en/permission-modes) before enabling.
+
+## Pro
+
+The free version keeps **Enable, Revert and the Doctor forever** — that is the whole point of the extension and it will never be gated. Pro is a one-time licence (7 €) for the things that save time once you trust it:
+
+| Pro feature | What it does |
+| :-- | :-- |
+| **Careful profile per project** | *"Handsfree: Mark this project as careful"* writes `permissions.disableBypassPermissionsMode = "disable"` and `defaultMode = "default"` to that project's `.claude/settings.local.json`. Claude Code refuses bypass there (terminal and VS Code) while every other project stays autonomous. Remove it with one command. |
+| **Guardrails** | Pick from ready-made sets of `ask` / `deny` rules that Claude Code enforces **even in bypass mode**: ask before destructive shell commands, never read `.env` / keys / `~/.ssh`, ask before publishing packages, ask before cloud infra changes. Native rules, no hooks; toggle sets on and off. |
+| **Export / import** | A small JSON with only the permission-mode keys and your ask/deny rules (never allow rules, `env` values or hooks) — to set up a second machine or share with a team. |
+| **Status bar** | After the first Handsfree command in a window: green / warning / "careful" indicator, click for the Doctor. |
+
+Licences are sold through [Polar](https://polar.sh) (merchant of record: they invoice and handle VAT). Activation sends your key and this computer's name to Polar, nothing else; the licence keeps working offline for 14 days between checks. Three computers per key; deactivate to move it. See [PRIVACY.md](PRIVACY.md).
 
 ## Requirements
 

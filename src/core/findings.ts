@@ -68,6 +68,8 @@ export interface DoctorInput {
   uninstalledPendingReload: string[];
   /** .claude/settings.json and .claude/settings.local.json of open workspace folders. */
   workspaceFiles: { path: string; result: ReadResult<ClaudeSettings> }[];
+  /** Project files that are Handsfree "careful" profiles (Pro): reported as info, not warning. */
+  ownedProfilePaths?: string[];
 }
 
 /** Message formatter with {0}-style placeholders; the VS Code layer passes vscode.l10n.t, tests use the identity below. */
@@ -305,11 +307,21 @@ export function evaluate(input: DoctorInput, t: Translate = defaultT): Finding[]
     const wd = w.result.data;
     if (!isPlainObject(wd)) continue;
     const wsMode = effectiveDefaultMode(wd);
-    if (wsMode && wsMode !== BYPASS_MODE) {
+    const ownedFile = (input.ownedProfilePaths ?? []).some((p) => p.toLowerCase() === w.path.toLowerCase());
+    if (wsMode && wsMode !== BYPASS_MODE && !(ownedFile && wsMode === 'default')) {
       out.push({ id: `ws.mode:${w.path}`, severity: 'warn', title: t('This project pins terminal sessions to "{0}" mode', wsMode), detail: t('{0} sets permissions.defaultMode. Project settings win over user settings for terminal sessions started here (VS Code conversations are not affected: the extension never reads project settings for the starting mode). Expected if this is a deliberate per-project profile.', w.path), fix: { kind: 'open-file', path: w.path } });
     }
     if (bypassDisabledByPolicy(wd)) {
-      out.push({ id: `ws.policy:${w.path}`, severity: 'warn', title: t('This project disables bypass mode'), detail: t('{0} sets permissions.disableBypassPermissionsMode = "disable": sessions in this project (terminal and VS Code) fall back to a mode that asks. Expected if this is a deliberate "careful" profile.', w.path), fix: { kind: 'open-file', path: w.path } });
+      const owned = (input.ownedProfilePaths ?? []).some((p) => p.toLowerCase() === w.path.toLowerCase());
+      out.push({
+        id: `ws.policy:${w.path}`,
+        severity: owned ? 'info' : 'warn',
+        title: owned ? t('Careful profile active in this project (set with Handsfree)') : t('This project disables bypass mode'),
+        detail: owned
+          ? t('{0} — Claude asks for permission here on purpose. "Handsfree: Remove careful profile" turns it off.', w.path)
+          : t('{0} sets permissions.disableBypassPermissionsMode = "disable": sessions in this project (terminal and VS Code) fall back to a mode that asks. Expected if this is a deliberate "careful" profile.', w.path),
+        fix: { kind: 'open-file', path: w.path },
+      });
     }
     const wsHooks = findRogueHooks(wd);
     if (wsHooks.length) {
