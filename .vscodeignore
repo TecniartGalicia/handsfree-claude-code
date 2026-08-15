@@ -14,3 +14,7 @@ tsconfig*.json
 .mocharc.json
 package-lock.json
 .gitattributes
+scripts/**
+CONTRIBUTING.md
+SECURITY.md
+media/icon.svg

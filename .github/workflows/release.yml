@@ -1,0 +1,42 @@
+name: Release
+
+# Tag vX.Y.Z on main → package, publish to VS Marketplace + Open VSX, attach the .vsix to a GitHub release.
+# Required repository secrets: VSCE_PAT (Azure DevOps PAT, Marketplace › Manage), OVSX_PAT (open-vsx.org token).
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: node scripts/l10n-sync.mjs
+      - name: Verify tag matches package.json version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          test "$TAG" = "$PKG" || { echo "tag $TAG != package.json $PKG"; exit 1; }
+      - run: npx vsce package --no-dependencies -o handsfree-claude-code-${GITHUB_REF_NAME}.vsix
+      - name: Publish to Visual Studio Marketplace
+        run: npx vsce publish --no-dependencies --packagePath handsfree-claude-code-${GITHUB_REF_NAME}.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      - name: Publish to Open VSX
+        run: npx ovsx publish handsfree-claude-code-${GITHUB_REF_NAME}.vsix -p "$OVSX_PAT"
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+      - name: GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: handsfree-claude-code-${{ github.ref_name }}.vsix
+          generate_release_notes: true
