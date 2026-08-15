@@ -154,10 +154,10 @@
     "@vscode/vsce": "^3.3.0",
     "esbuild": "^0.28.2",
     "eslint": "^10.8.1",
-    "glob": "^11.1.0",
+    "glob": "^13.0.6",
     "mocha": "^11.1.0",
-    "typescript": "^5.8.0",
-    "ovsx": "^1.1.1"
+    "ovsx": "^1.1.1",
+    "typescript": "^5.8.0"
   },
   "pricing": "Trial",
   "qna": "https://github.com/TecniartGalicia/handsfree-claude-code/discussions",
