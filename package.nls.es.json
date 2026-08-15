@@ -1,0 +1,6 @@
+{
+  "cmd.enable": "Activar modo autónomo",
+  "cmd.revert": "Revertir a la configuración anterior",
+  "cmd.doctor": "Doctor: ¿por qué Claude pide permiso?",
+  "cfg.claudeSettingsPath": "Ruta al fichero de configuración de usuario de Claude Code. Déjalo vacío para usar el predeterminado (`~/.claude/settings.json`, o `$CLAUDE_CONFIG_DIR/settings.json` si esa variable está definida)."
+}

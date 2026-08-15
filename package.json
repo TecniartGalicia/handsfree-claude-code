@@ -1,0 +1,100 @@
+{
+  "name": "handsfree-claude-code",
+  "displayName": "Handsfree for Claude Code",
+  "description": "Autonomous mode for Claude Code in one command: native settings only, no hooks, no quotas. Plus a Doctor that explains why Claude keeps asking for permission. Not affiliated with Anthropic.",
+  "version": "0.1.0",
+  "publisher": "argalla",
+  "license": "MIT",
+  "author": {
+    "name": "Argalla (Tecniart Galicia SL)",
+    "url": "https://argalla.com"
+  },
+  "homepage": "https://github.com/TecniartGalicia/handsfree-claude-code#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TecniartGalicia/handsfree-claude-code.git"
+  },
+  "bugs": {
+    "url": "https://github.com/TecniartGalicia/handsfree-claude-code/issues"
+  },
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#0F172A",
+    "theme": "dark"
+  },
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "claude",
+    "claude code",
+    "anthropic",
+    "permissions",
+    "autonomous",
+    "auto accept",
+    "auto approve",
+    "bypass permissions",
+    "doctor"
+  ],
+  "main": "./dist/extension.js",
+  "l10n": "./l10n",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "handsfree.enable",
+        "title": "%cmd.enable%",
+        "category": "Handsfree"
+      },
+      {
+        "command": "handsfree.revert",
+        "title": "%cmd.revert%",
+        "category": "Handsfree"
+      },
+      {
+        "command": "handsfree.doctor",
+        "title": "%cmd.doctor%",
+        "category": "Handsfree"
+      }
+    ],
+    "configuration": {
+      "title": "Handsfree for Claude Code",
+      "properties": {
+        "handsfree.claudeSettingsPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "%cfg.claudeSettingsPath%"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.mjs --production",
+    "watch": "node esbuild.mjs --watch",
+    "compile-tests": "tsc -p tsconfig.test.json",
+    "lint": "eslint src",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run compile-tests && mocha \"out/test/unit/**/*.test.js\"",
+    "test:integration": "npm run compile-tests && node ./out/test/integration/runTest.js",
+    "package": "vsce package --no-dependencies",
+    "check": "npm run typecheck && npm run lint && npm test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^20.17.0",
+    "@types/vscode": "^1.95.0",
+    "@typescript-eslint/eslint-plugin": "^8.30.0",
+    "@typescript-eslint/parser": "^8.30.0",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.3.0",
+    "esbuild": "^0.25.0",
+    "eslint": "^9.24.0",
+    "glob": "^11.1.0",
+    "mocha": "^11.1.0",
+    "typescript": "^5.8.0"
+  }
+}

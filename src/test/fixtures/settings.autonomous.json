@@ -1,0 +1,8 @@
+{
+  "model": "claude-fable-5[1m]",
+  "skipDangerousModePermissionPrompt": true,
+  "permissions": {
+    "defaultMode": "bypassPermissions",
+    "allow": ["Bash", "Edit", "Read"]
+  }
+}

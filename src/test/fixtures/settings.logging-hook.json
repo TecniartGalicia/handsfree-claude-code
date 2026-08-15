@@ -1,0 +1,12 @@
+{
+  "permissions": { "defaultMode": "auto" },
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "*", "hooks": [ { "type": "command", "command": "jq -r .tool_name >> ~/.claude/tools.log" } ] },
+      { "matcher": "Bash", "hooks": [ { "type": "command", "command": "echo bash-only" } ] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Write|Edit", "hooks": [ { "type": "command", "command": "prettier --write" } ] }
+    ]
+  }
+}
