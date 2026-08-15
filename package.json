@@ -130,6 +130,42 @@
           "markdownDescription": "%cfg.claudeSettingsPath%"
         }
       }
+    },
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "handsfree.profile.careful",
+          "when": "handsfree.proConfigured"
+        },
+        {
+          "command": "handsfree.guardrails",
+          "when": "handsfree.proConfigured"
+        },
+        {
+          "command": "handsfree.export",
+          "when": "handsfree.proConfigured"
+        },
+        {
+          "command": "handsfree.import",
+          "when": "handsfree.proConfigured"
+        },
+        {
+          "command": "handsfree.pro.activate",
+          "when": "handsfree.proConfigured"
+        },
+        {
+          "command": "handsfree.pro.deactivate",
+          "when": "handsfree.proConfigured"
+        },
+        {
+          "command": "handsfree.pro.status",
+          "when": "handsfree.proConfigured"
+        },
+        {
+          "command": "handsfree.pro.buy",
+          "when": "handsfree.proConfigured"
+        }
+      ]
     }
   },
   "scripts": {

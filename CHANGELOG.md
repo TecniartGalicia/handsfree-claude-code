@@ -4,13 +4,6 @@ All notable changes to this extension are documented here. Format: [Keep a Chang
 
 ## [Unreleased]
 
-### Added (Pro, one-time licence via Polar)
-- **Careful profile per project**: `disableBypassPermissionsMode` + `defaultMode: default` in the project's `.claude/settings.local.json`; the Doctor reports it as a deliberate profile.
-- **Guardrails**: ready-made `ask` / `deny` rule sets (destructive shell, secret files, publishing, cloud infra) that Claude Code enforces even in bypass mode; toggle per set.
-- **Export / import** of a minimal Handsfree profile (mode keys + ask/deny rules only).
-- **Status bar** indicator after the first Handsfree command in a window.
-- Licence commands: enter key, deactivate, status, get a licence. Offline grace of 14 days; validation throttled to once per 24 h.
-
 ## [0.1.0] - 2026-08-15
 
 ### Added
@@ -19,6 +12,14 @@ All notable changes to this extension are documented here. Format: [Keep a Chang
 - **Doctor**: validity of `settings.json` (with line/column), the four settings, unpinned starting mode, permission-deciding hooks (known tools vs catch-all vs narrow), conflicting extensions, managed policy, project overrides, official-extension contract validation, stale allow rules, unreadable files. One-click fixes, "fix all", Markdown report with home directory and user name redacted, secrets masked.
 - English and Spanish UI.
 - Honours `CLAUDE_CONFIG_DIR`; `handsfree.claudeSettingsPath` (machine scope) to override the file path.
+- File-based managed policy support (`managed-settings.json` + `managed-settings.d/`), Program Files location on Windows.
+
+### Added (Pro, optional one-time licence via Polar)
+- **Careful profile per project**: `disableBypassPermissionsMode` (+ `defaultMode: default` unless a prompting mode is already pinned) in the repository's `.claude/settings.local.json` (git root); the Doctor reports it as a deliberate profile. Removing it is free.
+- **Guardrails**: ready-made `ask` / `deny` rule sets (destructive shell, secret files, publishing, cloud infra) that Claude Code enforces even in bypass mode; toggle per set; removal takes only what Handsfree added and is free.
+- **Export / import** of a minimal, validated Handsfree profile (mode keys + ask/deny rules only), with before → after preview and the bypass warning when relevant.
+- **Status bar** indicator after the first Handsfree command in a window.
+- Licence commands: enter key, deactivate, status, get a licence. Offline grace of 14 days; validation throttled to once per 24 h; a bad answer is retried after 24 h. Pro commands stay hidden from the palette in builds without licensing configured.
 
 ### Security
 - Nothing runs at startup; no hooks; no network; no telemetry.

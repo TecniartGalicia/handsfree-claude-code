@@ -5,6 +5,7 @@ import { revertAutonomousMode } from './commands/revert';
 import { runDoctor, setOwnedProfileProvider, showDoctor } from './doctor/doctor';
 import { chooseGuardrails, exportProfile, importProfile, markProjectCareful, ownedProfilePaths, unmarkProjectCareful } from './pro/features';
 import { activateLicenseCommand, deactivateLicenseCommand, licenseStatusCommand, openCheckout } from './pro/licenseService';
+import { DEV_UNLOCK_ENV, polarConfigured } from './pro/polarConfig';
 import { ensureStatusBar } from './pro/statusBar';
 import { log, output } from './vscode/env';
 
@@ -15,6 +16,9 @@ import { log, output } from './vscode/env';
  */
 export function activate(context: vscode.ExtensionContext): void {
   setOwnedProfileProvider(() => ownedProfilePaths(context));
+  // Pro commands are hidden from the palette in builds without licensing configured (nothing unpurchasable on show).
+  // Removal commands (profile.remove) stay visible: taking away what Handsfree added is always free.
+  void vscode.commands.executeCommand('setContext', 'handsfree.proConfigured', polarConfigured() || process.env[DEV_UNLOCK_ENV] === '1');
 
   const wrap = (name: string, fn: () => Promise<void>) => async () => {
     try {
