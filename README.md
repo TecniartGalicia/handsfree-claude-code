@@ -14,13 +14,15 @@ Every "auto-accept" extension out there does the same thing with a different hac
 
 Claude Code already ships an autonomous mode. It's just spread over **four settings in two files**, plus a one-time confirmation dialog that is easy to miss inside VS Code, plus a "last mode you picked" memory in the extension that silently outranks your settings. Handsfree sets those four settings, and then gets out of the way.
 
+**Do you actually need this?** On Pro, Max and Team plans Claude Code now starts in **auto mode**, where a second model approves routine actions and blocks dangerous ones. If auto already works for you, keep it — it is the safer choice and needs no extension. Handsfree is for the cases where you want *zero* prompts and accept the trade-off below.
+
 ## What it does
 
 | Command | What happens |
 | :-- | :-- |
 | **Handsfree: Enable autonomous mode** | Shows a consent dialog listing exactly which files will change → takes a byte-exact backup → writes the four native settings below → offers to remove third-party auto-accept hooks/extensions that would override them → asks to reload. |
-| **Handsfree: Revert to previous settings** | Puts both files back exactly as they were before the *first* Enable (a safety copy of the current file is taken first). |
-| **Handsfree: Doctor** | Answers *"why is Claude asking me?"* — checks your machine, sorts problems → warnings → notes → OK, and offers a **Fix** for each. Copy the report (home directory and user name redacted) into a bug report or send it to a colleague. |
+| **Handsfree: Revert to previous settings** | Restores `settings.json` byte-for-byte and the two VS Code keys to their values from before the *first* Enable (a safety copy of the current file is taken first). |
+| **Handsfree: Doctor** | Answers *"why is Claude asking me?"* — checks your machine, sorts problems → warnings → notes → OK, and offers a **Fix** wherever one is safe (managed policies and unreadable files are explained, not "fixed"). Copy the report (home directory and user name redacted) into a bug report or send it to a colleague. |
 
 ### The four native settings
 
@@ -31,7 +33,7 @@ Claude Code already ships an autonomous mode. It's just spread over **four setti
 | VS Code user settings | `claudeCode.allowDangerouslySkipPermissions` | `true` | The official extension refuses to start a bypass conversation without this toggle. |
 | VS Code user settings | `claudeCode.initialPermissionMode` | `"bypassPermissions"` | Pins the starting mode of new conversations. Without it the extension uses **the mode you last picked in the mode indicator**, which outranks `defaultMode` — the classic "I set everything and it still asks". |
 
-`CLAUDE_CONFIG_DIR` is honoured; the file path can also be overridden with `handsfree.claudeSettingsPath` (machine scope).
+`skipDangerousModePermissionPrompt` is a top-level key (that is where the CLI itself stores the answer), even though the docs list it next to the `permissions.*` settings. `CLAUDE_CONFIG_DIR` is honoured as the VS Code process sees it — if you only export it in a shell profile, a VS Code launched from the Dock/Start menu will not see it; use `handsfree.claudeSettingsPath` (machine scope) in that case.
 
 ### What it deliberately does **not** do
 
@@ -52,7 +54,7 @@ Each check comes with a one-click fix where one is safe:
 | Starting mode not pinned in the extension | The last mode picked in the indicator wins over `defaultMode`. |
 | Hooks on `PreToolUse` / `PermissionRequest` from known auto-accept tools, or matching every tool | A hook answering "ask" beats any mode. Legit logging hooks are flagged as warnings, never removed unasked. |
 | Third-party auto-accept extensions installed | They override the native mode; offered for uninstall (with the reason). |
-| Managed policy (`managed-settings.json`) forbids bypass, pins a mode, or defines hooks | Only an administrator can change it — the Doctor tells you so instead of failing. |
+| File-based managed policy (`managed-settings.json` and `managed-settings.d/*.json`) forbids bypass, pins a mode, or defines hooks | Only an administrator can change it — the Doctor tells you so instead of failing. Registry / MDM / server-delivered policies are not files and are not inspected. |
 | Project `.claude/settings.json` / `settings.local.json` pins a mode, disables bypass or defines hooks | Project settings win for terminal sessions; the VS Code extension never reads them for the starting mode. |
 | Official extension installed and exposing the settings (validated against its manifest) | If Anthropic renames a key, Handsfree says so instead of writing junk. |
 | Allow-list rules that do nothing (`Tool(*)` next to `Tool`, renamed tools, leftovers of other extensions) | Cosmetic; offered as clean-up. |
@@ -61,14 +63,14 @@ Each check comes with a one-click fix where one is safe:
 ## Safety
 
 - **Consent first.** Enable shows a modal that explains what bypass mode means and lists the files that will change. Nothing is written before you accept.
-- **Backups.** A byte-exact copy of `~/.claude/settings.json` is saved to `~/.claude/backups/handsfree/` before every write (Enable, Revert, Doctor fixes). The newest 10 are kept. **Those copies contain whatever your settings contain — including `env` blocks with API keys — with the same file permissions as the original.**
+- **Backups.** A byte-exact copy of `~/.claude/settings.json` is saved to `~/.claude/backups/handsfree/` before every write (Enable, Revert, Doctor fixes); the newest 10 are kept, the copy behind Revert is never pruned. **Those copies contain whatever your settings contain — including `env` blocks with API keys — with the same file permissions as the original.**
 - **Revert is real.** It restores the original file and the two VS Code keys, and takes a copy of the current file first. Enable → Enable → Revert still returns to the original state.
 - **Never on a broken file.** If `settings.json` is invalid, nothing is written; the Doctor opens it at the offending line.
-- **Bypass mode is Anthropic's, with Anthropic's rules.** `ask` and `deny` rules still apply, `rm -rf /` and `rm -rf ~` still prompt (circuit breaker), and Claude Code refuses to run in this mode as root. Read the [official warning](https://code.claude.com/docs/en/permission-modes) — use it in repositories you trust and keep backups.
+- **Bypass mode is Anthropic's, with Anthropic's rules — and Anthropic's warning.** The official guidance is to use it *only in isolated environments like containers, VMs or dev containers without internet access, where Claude Code cannot damage your host system*. `ask` and `deny` rules still apply, `rm -rf /` and `rm -rf ~` still prompt (circuit breaker), and Claude Code refuses to run in this mode as root. Read the [official page](https://code.claude.com/docs/en/permission-modes) before enabling.
 
 ## Requirements
 
-- VS Code 1.95+ (also works in Cursor / VSCodium via Open VSX).
+- VS Code 1.95+. Cursor / VSCodium / Windsurf install it from Open VSX; the extension uses only standard APIs, but those hosts have not been tested yet.
 - Claude Code CLI; the official **Claude Code** extension (`anthropic.claude-code`) for the VS Code side. Without it, only the CLI settings are written.
 - Remote-SSH / WSL / Dev Containers: runs where Claude Code runs (`extensionKind: workspace`). Extensions installed on the *other* side are not visible to the Doctor.
 
@@ -82,7 +84,7 @@ Each check comes with a one-click fix where one is safe:
 
 **Does this work with `claude` in the terminal?** Yes: `permissions.defaultMode` covers terminal sessions; the two VS Code keys cover the extension.
 
-**Can my organisation block this?** Yes. `permissions.disableBypassPermissionsMode: "disable"` in managed settings wins over everything; Handsfree detects it and refuses to write.
+**Can my organisation block this?** Yes. `permissions.disableBypassPermissionsMode: "disable"` in managed settings wins over everything; Handsfree reads the file-based managed settings and refuses to write when they forbid bypass.
 
 ## Settings
 

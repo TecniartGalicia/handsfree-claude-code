@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { l10n } from 'vscode';
-import { backupSettingsFile, restoreClaudeSettings, settingsChangedSinceSnapshot } from '../core/snapshot';
+import { backupSettingsFile, pruneBackups, restoreClaudeSettings, settingsChangedSinceSnapshot } from '../core/snapshot';
 import { clearSnapshot, loadSnapshot, log, offerReload, resolveBackupDir } from '../vscode/env';
 import { inspectOfficialExtension, restoreOfficialGlobalValues } from '../vscode/officialExtension';
 
@@ -37,6 +37,7 @@ export async function revertAutonomousMode(context: vscode.ExtensionContext): Pr
   if (pick !== revert) return;
 
   const safety = await backupSettingsFile(snap.claude.settingsPath, resolveBackupDir(), new Date(), 'before-revert');
+  await pruneBackups(resolveBackupDir(), 10, [safety, snap.claude.backupPath]);
   log(`Revert: safety copy ${safety ?? 'n/a (file missing)'}`);
 
   const outcome = await restoreClaudeSettings(snap);

@@ -60,6 +60,8 @@ export interface DoctorInput {
   claudePath: string;
   claude: ReadResult<ClaudeSettings>;
   managed: { path: string; result: ReadResult<ClaudeSettings> }[];
+  /** Managed files found at locations Claude Code no longer reads (e.g. C:\ProgramData\ClaudeCode on Windows). */
+  legacyManagedFiles?: string[];
   official: OfficialInfo;
   rogueExtensions: { id: string; name: string; why: string; version?: string }[];
   /** Extensions uninstalled during this session (still visible to the API until reload). */
@@ -144,6 +146,10 @@ export function evaluate(input: DoctorInput, t: Translate = defaultT): Finding[]
     }
   }
 
+  for (const legacy of input.legacyManagedFiles ?? []) {
+    out.push({ id: `policy.legacy:${legacy}`, severity: 'info', title: t('A managed settings file exists at a location Claude Code no longer reads'), detail: t('{0} — Claude Code 2.1.75 and later only read managed settings from the Program Files location; this file has no effect.', legacy) });
+  }
+
   // ---- 2. User settings file health ----------------------------------------------------------
   if (!claude.ok) {
     const isRead = !!claude.error.code;
@@ -172,7 +178,15 @@ export function evaluate(input: DoctorInput, t: Translate = defaultT): Finding[]
   // ---- 3. Claude keys (only when the file is trustworthy) ------------------------------------
   if (settingsUsable) {
     const mode = effectiveDefaultMode(settings);
-    if (mode !== BYPASS_MODE) {
+    if (mode === 'auto') {
+      out.push({
+        id: 'claude.defaultMode',
+        severity: 'warn',
+        title: t('Claude default permission mode is "auto" (a classifier reviews actions), not bypassPermissions'),
+        detail: t('permissions.defaultMode in {0}. Auto mode is the official default on Pro/Max/Team plans and the safer choice: a second model approves routine actions and blocks dangerous ones. If auto already works for you, you do not need bypass mode. Enable autonomous mode only if you want zero prompts.', input.claudePath),
+        fix: enableFix,
+      });
+    } else if (mode !== BYPASS_MODE) {
       out.push({
         id: 'claude.defaultMode',
         severity: 'warn',

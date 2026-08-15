@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { l10n } from 'vscode';
-import { backupDir, claudeSettingsPath, managedSettingsCandidates } from '../core/paths';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import { backupDir, claudeSettingsPath, managedSettingsCandidates, managedSettingsDropinDir } from '../core/paths';
 import { readJsonFile, ReadResult } from '../core/jsonFile';
 import { ClaudeSettings } from '../core/claudeSettings';
 import { loadSnapshotFile, retireSnapshotFile, saveSnapshot, Snapshot } from '../core/snapshot';
@@ -35,13 +37,33 @@ export async function readClaudeSettings(timeoutMs?: number): Promise<ReadResult
 }
 
 /** Managed (policy) settings, if any exist on this machine. */
+/**
+ * File-based managed (policy) settings: the main managed-settings.json plus every non-hidden
+ * *.json in managed-settings.d/ (alphabetical), the way Claude Code merges them.
+ */
 export async function readManagedSettings(timeoutMs?: number): Promise<{ path: string; result: ReadResult<ClaudeSettings> }[]> {
   const out: { path: string; result: ReadResult<ClaudeSettings> }[] = [];
   for (const p of managedSettingsCandidates()) {
     const result = await readJsonFile<ClaudeSettings>(p, timeoutMs);
     if (result.exists) out.push({ path: p, result });
   }
+  for (const p of await listDropins(managedSettingsDropinDir())) {
+    const result = await readJsonFile<ClaudeSettings>(p, timeoutMs);
+    if (result.exists) out.push({ path: p, result });
+  }
   return out;
+}
+
+async function listDropins(dir: string): Promise<string[]> {
+  try {
+    const names = await fs.readdir(dir);
+    return names
+      .filter((n) => n.endsWith('.json') && !n.startsWith('.'))
+      .sort()
+      .map((n) => path.join(dir, n));
+  } catch {
+    return [];
+  }
 }
 
 export async function storeSnapshot(context: vscode.ExtensionContext, snap: Snapshot): Promise<void> {

@@ -4,7 +4,7 @@ import * as fsp from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 import { lineColFromOffset, offsetFromMessage, parseStrictJson, readJsonFile, stripBom, writeJsonFileAtomic } from '../../core/jsonFile';
-import { backupDir, claudeConfigDir, claudeSettingsPath, expandHome, managedSettingsCandidates } from '../../core/paths';
+import { backupDir, claudeConfigDir, claudeSettingsPath, expandHome, legacyManagedSettingsCandidates, managedSettingsCandidates, managedSettingsDropinDir } from '../../core/paths';
 import { backupSettingsFile, loadSnapshotFile, pruneBackups, restoreClaudeSettings, saveSnapshot, Snapshot, timestampForFilename } from '../../core/snapshot';
 
 const FIXTURES = path.join(__dirname, '..', '..', '..', 'src', 'test', 'fixtures');
@@ -52,8 +52,14 @@ describe('paths', () => {
   it('backup dir sits next to the settings file; managed candidates per platform', () => {
     assert.strictEqual(backupDir('/home/u/.claude/settings.json'), path.join('/home/u/.claude', 'backups', 'handsfree'));
     assert.deepStrictEqual(managedSettingsCandidates('linux'), ['/etc/claude-code/managed-settings.json']);
-    assert.ok(managedSettingsCandidates('win32', { ProgramData: 'D:\\PD' })[0].startsWith('D:\\PD'));
+    assert.strictEqual(managedSettingsDropinDir('linux'), '/etc/claude-code/managed-settings.d');
+    // Windows: Program Files since Claude Code 2.1.75; ProgramData is legacy and ignored by the CLI
+    assert.ok(managedSettingsCandidates('win32', { ProgramFiles: 'D:\\PF' } as any)[0].startsWith('D:\\PF'));
+    assert.ok(managedSettingsCandidates('win32', {} as any)[0].includes('Program Files'));
+    assert.ok(legacyManagedSettingsCandidates('win32', { ProgramData: 'D:\\PD' } as any)[0].startsWith('D:\\PD'));
+    assert.deepStrictEqual(legacyManagedSettingsCandidates('linux'), []);
     assert.ok(managedSettingsCandidates('darwin')[0].includes('Application Support'));
+    assert.ok(managedSettingsDropinDir('darwin').endsWith('managed-settings.d'));
   });
 });
 

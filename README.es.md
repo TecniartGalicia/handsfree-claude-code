@@ -14,13 +14,15 @@ Todas las extensiones de "auto-accept" hacen lo mismo con un truco distinto: un 
 
 Claude Code ya trae un modo autónomo. Solo que está repartido en **cuatro ajustes en dos ficheros**, más un diálogo de confirmación único que dentro de VS Code pasa desapercibido, más una memoria del "último modo que elegiste" en la extensión que gana en silencio a tus ajustes. Handsfree pone esos cuatro ajustes y se aparta.
 
+**¿De verdad lo necesitas?** En los planes Pro, Max y Team, Claude Code arranca ya en **modo auto**: un segundo modelo aprueba las acciones rutinarias y bloquea las peligrosas. Si auto ya te vale, quédatelo: es la opción más segura y no necesita ninguna extensión. Handsfree es para cuando quieres *cero* diálogos y aceptas la contrapartida de abajo.
+
 ## Qué hace
 
 | Comando | Qué ocurre |
 | :-- | :-- |
 | **Handsfree: Activar modo autónomo** | Diálogo de consentimiento con la lista exacta de ficheros que cambiarán → copia byte a byte → escribe los cuatro ajustes nativos → ofrece eliminar hooks/extensiones de auto-aceptación de terceros que los anularían → propone recargar. |
-| **Handsfree: Revertir a la configuración anterior** | Devuelve ambos ficheros exactamente al estado previo a la *primera* activación (antes guarda copia del fichero actual). |
-| **Handsfree: Doctor** | Responde a *"¿por qué me pregunta?"*: revisa el equipo, ordena problemas → avisos → notas → correcto, y ofrece **Arreglar** en cada uno. Copia el informe (carpeta y nombre de usuario ocultados) para un issue o para un compañero. |
+| **Handsfree: Revertir a la configuración anterior** | Restaura `settings.json` byte a byte y las dos claves de VS Code a sus valores previos a la *primera* activación (antes guarda copia del fichero actual). |
+| **Handsfree: Doctor** | Responde a *"¿por qué me pregunta?"*: revisa el equipo, ordena problemas → avisos → notas → correcto, y ofrece **Arreglar** siempre que sea seguro (las políticas gestionadas y los ficheros ilegibles se explican, no se "arreglan"). Copia el informe (carpeta y nombre de usuario ocultados) para un issue o para un compañero. |
 
 ### Los cuatro ajustes nativos
 
@@ -31,7 +33,7 @@ Claude Code ya trae un modo autónomo. Solo que está repartido en **cuatro ajus
 | Ajustes de usuario de VS Code | `claudeCode.allowDangerouslySkipPermissions` | `true` | La extensión oficial se niega a abrir una conversación en bypass sin este interruptor. |
 | Ajustes de usuario de VS Code | `claudeCode.initialPermissionMode` | `"bypassPermissions"` | Fija el modo inicial de las conversaciones nuevas. Sin él, la extensión usa **el último modo que elegiste en el indicador**, que gana a `defaultMode` — el clásico "lo tengo todo puesto y sigue preguntando". |
 
-Se respeta `CLAUDE_CONFIG_DIR`; la ruta también puede fijarse con `handsfree.claudeSettingsPath` (ámbito de máquina).
+`skipDangerousModePermissionPrompt` va en el nivel raíz (ahí es donde lo guarda la propia CLI), aunque la documentación lo liste junto a los ajustes `permissions.*`. `CLAUDE_CONFIG_DIR` se respeta tal y como lo ve el proceso de VS Code: si solo lo exportas en el perfil de la shell, un VS Code lanzado desde el Dock/menú Inicio no lo verá; usa `handsfree.claudeSettingsPath` (ámbito de máquina) en ese caso.
 
 ### Lo que no hace, a propósito
 
@@ -39,7 +41,7 @@ Se respeta `CLAUDE_CONFIG_DIR`; la ruta también puede fijarse con `handsfree.cl
 - **Sin auto-clic ni teclear en el terminal.** Nada que se rompa cuando cambia la interfaz.
 - **Sin cuota, sin contador, sin "pasa a Pro para seguir".**
 - **Nada se ejecuta al arrancar.** La extensión solo se activa cuando lanzas uno de sus comandos.
-- **Sin telemetría, sin red.** Ver [PRIVACY.md](PRIVACY.md).
+- **Sin telemetría, sin red.** Ver [PRIVACY.es.md](PRIVACY.es.md).
 
 ## El Doctor
 
@@ -52,7 +54,7 @@ Cada comprobación trae un arreglo a un clic cuando es seguro:
 | Modo inicial sin fijar en la extensión | El último modo elegido en el indicador gana a `defaultMode`. |
 | Hooks en `PreToolUse` / `PermissionRequest` de herramientas de auto-aceptación conocidas, o que aplican a todas las herramientas | Un hook que responde "ask" gana a cualquier modo. Los hooks legítimos de registro se marcan como aviso, nunca se eliminan sin preguntar. |
 | Extensiones de auto-aceptación de terceros instaladas | Anulan el modo nativo; se ofrece desinstalarlas (con el motivo). |
-| Política gestionada (`managed-settings.json`) que prohíbe bypass, fija un modo o define hooks | Solo un administrador puede cambiarla: el Doctor lo dice en vez de fallar. |
+| Política gestionada basada en fichero (`managed-settings.json` y `managed-settings.d/*.json`) que prohíbe bypass, fija un modo o define hooks | Solo un administrador puede cambiarla: el Doctor lo dice en vez de fallar. Las políticas por registro / MDM / servidor no son ficheros y no se inspeccionan. |
 | `.claude/settings.json` / `settings.local.json` del proyecto que fija un modo, desactiva bypass o define hooks | La configuración del proyecto gana en las sesiones de terminal; la extensión de VS Code nunca la lee para el modo inicial. |
 | Extensión oficial instalada y exponiendo los ajustes (validado contra su manifiesto) | Si Anthropic renombra una clave, Handsfree lo dice en vez de escribir basura. |
 | Reglas allow que no hacen nada (`Tool(*)` junto a `Tool`, herramientas renombradas, restos de otras extensiones) | Cosmético; se ofrece limpiar. |
@@ -61,14 +63,14 @@ Cada comprobación trae un arreglo a un clic cuando es seguro:
 ## Seguridad
 
 - **Consentimiento primero.** Activar muestra un diálogo modal que explica qué significa el modo bypass y lista los ficheros que cambiarán. No se escribe nada antes de aceptar.
-- **Copias de seguridad.** Antes de cada escritura (Activar, Revertir, arreglos del Doctor) se guarda una copia byte a byte de `~/.claude/settings.json` en `~/.claude/backups/handsfree/`. Se conservan las 10 más recientes. **Esas copias contienen lo mismo que tu configuración — incluidos bloques `env` con claves de API — con los mismos permisos que el original.**
+- **Copias de seguridad.** Antes de cada escritura (Activar, Revertir, arreglos del Doctor) se guarda una copia byte a byte de `~/.claude/settings.json` en `~/.claude/backups/handsfree/`; se conservan las 10 más recientes y la copia que respalda Revertir nunca se poda. **Esas copias contienen lo mismo que tu configuración — incluidos bloques `env` con claves de API — con los mismos permisos que el original.**
 - **Revertir es real.** Restaura el fichero original y las dos claves de VS Code, y antes copia el fichero actual. Activar → Activar → Revertir sigue volviendo al estado original.
 - **Nunca sobre un fichero roto.** Si `settings.json` es inválido no se escribe nada; el Doctor lo abre en la línea del error.
-- **El modo bypass es de Anthropic, con las reglas de Anthropic.** Las reglas `ask` y `deny` siguen aplicando, `rm -rf /` y `rm -rf ~` siguen preguntando (cortacircuitos), y Claude Code se niega a arrancar en este modo como root. Lee el [aviso oficial](https://code.claude.com/docs/en/permission-modes): úsalo en repositorios de confianza y ten copias de seguridad.
+- **El modo bypass es de Anthropic, con las reglas de Anthropic — y con su aviso.** La recomendación oficial es usarlo *solo en entornos aislados como contenedores, VMs o dev containers sin acceso a internet, donde Claude Code no pueda dañar tu equipo*. Las reglas `ask` y `deny` siguen aplicando, `rm -rf /` y `rm -rf ~` siguen preguntando (cortacircuitos), y Claude Code se niega a arrancar en este modo como root. Lee la [página oficial](https://code.claude.com/docs/en/permission-modes) antes de activarlo.
 
 ## Requisitos
 
-- VS Code 1.95+ (también Cursor / VSCodium vía Open VSX).
+- VS Code 1.95+. Cursor / VSCodium / Windsurf la instalan desde Open VSX; la extensión usa solo APIs estándar, pero esos hosts aún no se han probado.
 - CLI de Claude Code; la extensión oficial **Claude Code** (`anthropic.claude-code`) para la parte de VS Code. Sin ella solo se escriben los ajustes de la CLI.
 - Remote-SSH / WSL / Dev Containers: se ejecuta donde se ejecuta Claude Code (`extensionKind: workspace`). Las extensiones instaladas en el *otro* lado no son visibles para el Doctor.
 
@@ -82,7 +84,7 @@ Cada comprobación trae un arreglo a un clic cuando es seguro:
 
 **¿Funciona con `claude` en el terminal?** Sí: `permissions.defaultMode` cubre las sesiones de terminal; las dos claves de VS Code cubren la extensión.
 
-**¿Puede bloquearlo mi organización?** Sí. `permissions.disableBypassPermissionsMode: "disable"` en la configuración gestionada gana a todo; Handsfree lo detecta y se niega a escribir.
+**¿Puede bloquearlo mi organización?** Sí. `permissions.disableBypassPermissionsMode: "disable"` en la configuración gestionada gana a todo; Handsfree lee la configuración gestionada basada en fichero y se niega a escribir cuando prohíbe bypass.
 
 ## Ajustes
 

@@ -5,11 +5,12 @@ import { l10n } from 'vscode';
 import { removeAllowRules, removeHooksDetailed } from '../core/claudeSettings';
 import { DoctorInput, evaluate, Finding, FixKind, maskSecrets, planFixAll, summarize } from '../core/findings';
 import { readJsonFile, writeJsonFileAtomic } from '../core/jsonFile';
-import { claudeConfigDir } from '../core/paths';
+import { claudeConfigDir, legacyManagedSettingsCandidates } from '../core/paths';
+import { fileExists } from '../core/jsonFile';
 import { DoctorReport, redact, renderReportMarkdown } from '../core/report';
-import { backupSettingsFile } from '../core/snapshot';
+import { backupSettingsFile, pruneBackups } from '../core/snapshot';
 import { enableAutonomousMode } from '../commands/enable';
-import { log, offerReload, openFileAt, readClaudeSettings, readManagedSettings, resolveBackupDir, resolveClaudeSettingsPath } from '../vscode/env';
+import { loadSnapshot, log, offerReload, openFileAt, readClaudeSettings, readManagedSettings, resolveBackupDir, resolveClaudeSettingsPath } from '../vscode/env';
 import { inspectOfficialExtension, OfficialValues, readOfficialValues } from '../vscode/officialExtension';
 import { findInstalledRogueExtensions, uninstalledThisSession, uninstallExtension } from '../vscode/rogueExtensions';
 
@@ -37,10 +38,13 @@ export async function collect(): Promise<DoctorInput> {
       workspaceFiles.push({ path: p, result: await readJsonFile(p, READ_TIMEOUT_MS) });
     }
   }
+  const legacyManagedFiles: string[] = [];
+  for (const p of legacyManagedSettingsCandidates()) if (await fileExists(p)) legacyManagedFiles.push(p);
   return {
     claudePath,
     claude,
     managed,
+    legacyManagedFiles,
     official: {
       installed: contract.installed,
       version: contract.version,
@@ -187,6 +191,7 @@ async function applyFix(context: vscode.ExtensionContext, fix: FixKind, finding?
       const pick = await vscode.window.showWarningMessage(what, { modal: true, detail: detail + '\n\n' + l10n.t('A backup is saved first.') }, yes);
       if (pick !== yes) return;
       const backup = await backupSettingsFile(settingsPath, resolveBackupDir(), new Date(), 'before-doctor');
+      await pruneBackups(resolveBackupDir(), 10, [backup, (await loadSnapshot(context))?.claude.backupPath]);
       if (fix.kind === 'remove-hooks') {
         const { next, removed, skipped } = removeHooksDetailed(current.data, fix.hooks);
         if (removed > 0) await writeJsonFileAtomic(settingsPath, next);

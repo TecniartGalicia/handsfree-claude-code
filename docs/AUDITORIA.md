@@ -65,3 +65,21 @@ Antes de corregir se verificaron dos hechos en la documentación oficial de Clau
 | 6.3 | Baja | `extensionKind` sin declarar | `["workspace"]` |
 
 Estado tras corrección: 62 tests unitarios + 4 de integración hermética en verde; `npm run check` limpio.
+
+## F3 · Publicación (2026-08-15)
+
+| # | Sev. | Hallazgo | Resolución |
+|---|------|----------|------------|
+| 1 | Alta | Ruta managed de Windows obsoleta (`ProgramData`; desde 2.1.75 es `Program Files\ClaudeCode`); no se leían `managed-settings.d/*.json`; README prometía una detección que no ocurría en Windows | `paths.ts` reescrito (Program Files, drop-ins alfabéticos, legado solo como nota del Doctor); README/README.es aclaran "políticas basadas en fichero; registro/MDM/servidor no se inspeccionan"; tests |
+| 2 | Media | Encuadre de seguridad más blando que el aviso oficial; sin mención al modo `auto` | Aviso oficial ("solo entornos aislados…") en README y en el modal de consentimiento; párrafo "¿De verdad lo necesitas?" sobre auto; hallazgo específico del Doctor cuando `defaultMode` es `auto` |
+| 3 | Media | `ovsx` sin fijar; acciones sin pin por SHA | `ovsx` en devDependencies; `checkout`/`setup-node`/`upload-artifact`/`action-gh-release` fijadas por SHA; `dependabot.yml` |
+| 4 | Media-baja | Release no idempotente; sin comprobar rama; sin timeout | Publicación salta si la versión ya existe (Marketplace vía `vsce show`, Open VSX vía `ovsx get`); `merge-base --is-ancestor origin/main`; `timeout-minutes` |
+| 5 | Media-baja | `docs/TUS-TAREAS.md` (notas internas) trackeado | Fuera del repo (`.gitignore`), sigue en disco; `AUDITORIA.md` se mantiene público a propósito |
+| 6 | Baja | `@types/vscode ^1.95` resolvía a 1.125 | Fijado a `1.95.0` exacto |
+| 7 | Baja | Poda de backups solo en Enable | También en Revert y Doctor (protegiendo la copia del snapshot) |
+| 8 | Baja | Nota sobre nivel raíz de `skipDangerousModePermissionPrompt` | Añadida al README |
+| 9 | Baja | Afirmaciones a matizar (Cursor no probado, `CLAUDE_CONFIG_DIR` del proceso, "Fix" solo donde es seguro, Revert restaura claves) | Textos ajustados EN/ES |
+| 10 | Baja | Icono 128; categoría solo "Other"; keyword "anthropic"; sin `preview` | Icono 256 px; categorías `AI, Other`; keyword retirada; `preview: true` |
+| 11 | Baja | Prerrequisitos de publicación | Private vulnerability reporting activado en GitHub (API); TUS-TAREAS recoge push-antes-de-publicar; PRIVACY.es.md añadido |
+
+Estado: 62 tests unitarios + 4 integración; `vsce package` sin avisos (14 ficheros, 39 KB); `.vsix` instalado con éxito en un VS Code 1.133 limpio.

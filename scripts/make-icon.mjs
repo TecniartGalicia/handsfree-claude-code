@@ -1,4 +1,4 @@
-// Generates media/icon.png (128×128) and media/icon.svg without any dependency.
+// Generates media/icon.png (256×256, HiDPI-friendly) and media/icon.svg without any dependency.
 // Design: Argalla navy tile, a turquoise "prompt" chevron and a blue cursor bar — "the prompt keeps
 // moving on its own". Rendered with signed-distance functions at 4× and box-downsampled.
 import fs from 'node:fs';
@@ -10,7 +10,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_PNG = path.join(ROOT, 'media', 'icon.png');
 const OUT_SVG = path.join(ROOT, 'media', 'icon.svg');
 
-const SIZE = 128;
+const SIZE = 256; // output pixels
+const UNIT = 128; // geometry below is expressed in a 128-unit box
+const K = SIZE / UNIT;
 const SS = 4; // supersampling
 const NAVY = [0x0f, 0x17, 0x2a];
 const TURQ = [0x2d, 0xd4, 0xbf];
@@ -37,9 +39,9 @@ const W = SIZE * SS;
 const rgba = new Uint8ClampedArray(W * W * 4);
 for (let j = 0; j < W; j++) {
   for (let i = 0; i < W; i++) {
-    const x = (i + 0.5) / SS, y = (j + 0.5) / SS;
+    const x = (i + 0.5) / SS / K, y = (j + 0.5) / SS / K;
     let r = 0, g = 0, b = 0, a = 0;
-    if (sdRoundRect(x, y, SIZE, SIZE, RADIUS) <= 0) {
+    if (sdRoundRect(x, y, UNIT, UNIT, RADIUS) <= 0) {
       [r, g, b] = NAVY; a = 255;
       const dChev = Math.min(sdSegment(x, y, CHEV.a, CHEV.b), sdSegment(x, y, CHEV.b, CHEV.c));
       if (dChev <= STROKE / 2) [r, g, b] = TURQ;
@@ -84,8 +86,8 @@ fs.mkdirSync(path.dirname(OUT_PNG), { recursive: true });
 fs.writeFileSync(OUT_PNG, png);
 
 const hex = ([r, g, b]) => '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
-const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SIZE} ${SIZE}" width="${SIZE}" height="${SIZE}">
-  <rect width="${SIZE}" height="${SIZE}" rx="${RADIUS}" fill="${hex(NAVY)}"/>
+const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${UNIT} ${UNIT}" width="${SIZE}" height="${SIZE}">
+  <rect width="${UNIT}" height="${UNIT}" rx="${RADIUS}" fill="${hex(NAVY)}"/>
   <polyline points="${CHEV.a.join(',')} ${CHEV.b.join(',')} ${CHEV.c.join(',')}" fill="none" stroke="${hex(TURQ)}" stroke-width="${STROKE}" stroke-linecap="round" stroke-linejoin="round"/>
   <line x1="${BAR.a[0]}" y1="${BAR.a[1]}" x2="${BAR.b[0]}" y2="${BAR.b[1]}" stroke="${hex(BLUE)}" stroke-width="${STROKE}" stroke-linecap="round"/>
 </svg>

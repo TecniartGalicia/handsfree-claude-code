@@ -1,6 +1,8 @@
 name: Release
 
-# Tag vX.Y.Z on main → package, publish to VS Marketplace + Open VSX, attach the .vsix to a GitHub release.
+# Tag vX.Y.Z (on a commit reachable from main) → check, package, publish to VS Marketplace + Open VSX,
+# attach the .vsix to a GitHub release. Re-running after a partial failure is safe: a version that is
+# already published on a registry is detected and skipped.
 # Required repository secrets: VSCE_PAT (Azure DevOps PAT, Marketplace › Manage), OVSX_PAT (open-vsx.org token).
 on:
   push:
@@ -12,31 +14,48 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run check
-      - run: node scripts/l10n-sync.mjs
-      - name: Verify tag matches package.json version
+      - name: Verify tag is on main and matches package.json
         run: |
+          git fetch origin main --quiet
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "tag commit is not on main"; exit 1; }
           TAG="${GITHUB_REF_NAME#v}"
           PKG="$(node -p "require('./package.json').version")"
           test "$TAG" = "$PKG" || { echo "tag $TAG != package.json $PKG"; exit 1; }
-      - run: npx vsce package --no-dependencies -o handsfree-claude-code-${GITHUB_REF_NAME}.vsix
-      - name: Publish to Visual Studio Marketplace
-        run: npx vsce publish --no-dependencies --packagePath handsfree-claude-code-${GITHUB_REF_NAME}.vsix
+      - run: npm run check
+      - run: node scripts/l10n-sync.mjs
+      - run: npx vsce package --no-dependencies -o "handsfree-claude-code-${GITHUB_REF_NAME}.vsix"
+      - name: Publish to Visual Studio Marketplace (skips if this version is already there)
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
-      - name: Publish to Open VSX
-        run: npx ovsx publish handsfree-claude-code-${GITHUB_REF_NAME}.vsix -p "$OVSX_PAT"
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          if npx vsce show argalla.handsfree-claude-code --json 2>/dev/null | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d);process.exit((j.versions||[]).some(v=>v.version==='$VER')?0:1)})"; then
+            echo "Marketplace already has $VER — skipping"
+          else
+            npx vsce publish --no-dependencies --packagePath "handsfree-claude-code-${GITHUB_REF_NAME}.vsix"
+          fi
+      - name: Publish to Open VSX (skips if this version is already there)
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          if npx ovsx get "argalla.handsfree-claude-code@$VER" --metadata >/dev/null 2>&1; then
+            echo "Open VSX already has $VER — skipping"
+          else
+            npx ovsx publish "handsfree-claude-code-${GITHUB_REF_NAME}.vsix" -p "$OVSX_PAT"
+          fi
       - name: GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: handsfree-claude-code-${{ github.ref_name }}.vsix
           generate_release_notes: true

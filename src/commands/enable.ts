@@ -93,7 +93,7 @@ export async function enableAutonomousMode(context: vscode.ExtensionContext): Pr
       modal: true,
       detail:
         l10n.t(
-          'This turns on Claude Code\'s own "bypass permissions" mode: Claude will read, write and run commands in your projects without confirmation prompts. That includes anything a prompt could ask for — deleting files, running scripts, pushing to git.\n\nUse it in repositories you trust and keep backups. A byte-exact copy of your current settings is saved first (next to the file, in backups/handsfree — it may contain the same secrets as the file itself); "Handsfree: Revert" restores it.\n\nChanges apply to NEW Claude Code conversations.',
+          'This turns on Claude Code\'s own "bypass permissions" mode: Claude will read, write and run commands in your projects without confirmation prompts. That includes anything a prompt could ask for — deleting files, running scripts, pushing to git.\n\nAnthropic\'s guidance: use this mode only in isolated environments (containers, VMs, dev containers without internet access) where Claude Code cannot damage your host system. If Claude Code\'s auto mode already works for you, you do not need this.\n\nA byte-exact copy of your current settings is saved first (next to the file, in backups/handsfree — it may contain the same secrets as the file itself); "Handsfree: Revert" restores it.\n\nChanges apply to NEW Claude Code conversations.',
         ) +
         '\n\n' +
         l10n.t('Files that will change:') +
