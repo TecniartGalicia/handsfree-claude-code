@@ -157,7 +157,7 @@
     "glob": "^11.1.0",
     "mocha": "^11.1.0",
     "typescript": "^5.8.0",
-    "ovsx": "^0.10.0"
+    "ovsx": "^1.1.1"
   },
   "pricing": "Trial",
   "qna": "https://github.com/TecniartGalicia/handsfree-claude-code/discussions",
