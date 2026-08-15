@@ -23,5 +23,8 @@ Press F5 in VS Code to launch an Extension Development Host.
 2. Emit a `Finding` in `src/core/findings.ts` with a stable `id`, a severity that matches reality (an `error` must mean "Claude will ask because of this"), and a `fix` only when it is safe and reversible.
 3. Add a fixture + test in `src/test/unit/findings.test.ts`, and translations.
 
+## Pro and the honour system
+Pro features are gated by a licence key validated against Polar. `HANDSFREE_PRO_DEV=1` in the extension host's environment unlocks them without network — for development and CI only. It is trivially discoverable in an MIT bundle and that is fine: the free features are the product; Pro is a way to support the work.
+
 ## Releasing
 Tag `vX.Y.Z` on `main`; CI packages and publishes to the Marketplace and Open VSX (see `.github/workflows/release.yml`). Update `CHANGELOG.md` first.

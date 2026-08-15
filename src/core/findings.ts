@@ -26,6 +26,7 @@ import {
   RogueHook,
   StaleRule,
 } from './claudeSettings';
+import { allTemplateRules } from './guardrails';
 import { ReadResult } from './jsonFile';
 
 export type Severity = 'error' | 'warn' | 'info' | 'ok';
@@ -244,6 +245,19 @@ export function evaluate(input: DoctorInput, t: Translate = defaultT): Finding[]
       });
     }
     if (!hooks.length && settings) out.push({ id: 'hooks.none', severity: 'ok', title: t('No permission-deciding hooks in {0}', input.claudePath) });
+
+    // ---- 4b. Ask rules: they force a prompt even in bypass mode (that is their point) --------------
+    const askRules: string[] = Array.isArray(settings?.permissions?.ask) ? settings!.permissions.ask.filter((r: unknown): r is string => typeof r === 'string') : [];
+    if (askRules.length) {
+      const ours = allTemplateRules();
+      const mine = askRules.filter((r) => ours.has(r)).length;
+      out.push({
+        id: 'ask.rules',
+        severity: 'info',
+        title: t('{0} ask rule(s) force a prompt even in bypass mode ({1} from Handsfree guardrails)', askRules.length, mine),
+        detail: askRules.map(maskSecrets).join('\n') + '\n' + t('This is by design: an explicit ask rule always prompts. Use "Handsfree: Guardrails" to change the Handsfree sets, or edit permissions.ask in {0}.', input.claudePath),
+      });
+    }
 
     // ---- 5. Allow-list hygiene ---------------------------------------------------------------
     const stale: StaleRule[] = findStaleAllowRules(settings?.permissions?.allow);

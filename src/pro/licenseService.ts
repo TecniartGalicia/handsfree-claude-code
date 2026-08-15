@@ -6,50 +6,77 @@ import { log } from '../vscode/env';
 import { DEV_UNLOCK_ENV, POLAR_CHECKOUT_URL, POLAR_ORGANIZATION_ID, polarConfigured, PRO_INFO_URL, PRO_PRICE_LABEL } from './polarConfig';
 
 const SECRET_KEY = 'handsfree.license';
+/** Cheap flag so free commands never touch secret storage on machines that never had a licence. */
+const STATE_HAS_LICENSE = 'handsfree.hasLicense';
 
 const fetchImpl: FetchLike = (url, init) => fetch(url, init) as unknown as ReturnType<FetchLike>;
+const cfg = () => ({ organizationId: POLAR_ORGANIZATION_ID, checkoutUrl: POLAR_CHECKOUT_URL });
 
 export async function loadState(context: vscode.ExtensionContext): Promise<LicenseState> {
+  if (!context.globalState.get<boolean>(STATE_HAS_LICENSE)) return {};
   try {
     const raw = await context.secrets.get(SECRET_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
-    return typeof parsed === 'object' && parsed ? (parsed as LicenseState) : {};
+    return typeof parsed === 'object' && parsed && typeof parsed.key === 'string' ? (parsed as LicenseState) : {};
   } catch {
     return {};
   }
 }
 
 async function saveState(context: vscode.ExtensionContext, state: LicenseState): Promise<void> {
-  if (!state.key) await context.secrets.delete(SECRET_KEY);
-  else await context.secrets.store(SECRET_KEY, JSON.stringify(state));
+  if (!state.key) {
+    await context.secrets.delete(SECRET_KEY);
+    await context.globalState.update(STATE_HAS_LICENSE, undefined);
+  } else {
+    await context.secrets.store(SECRET_KEY, JSON.stringify({ ...state, version: 1 }));
+    await context.globalState.update(STATE_HAS_LICENSE, true);
+  }
 }
 
 function devUnlocked(): boolean {
   return process.env[DEV_UNLOCK_ENV] === '1';
 }
 
-/** Cached per session so a burst of commands never causes more than one validation. */
+/** Session cache + in-flight de-duplication: a burst of commands causes at most one validation. */
 let cached: { at: number; decision: ProDecision } | undefined;
+let inflight: Promise<ProDecision> | undefined;
+
+export function invalidateProCache(): void {
+  cached = undefined;
+}
 
 /** Decides Pro status: offline first, network (throttled) only when needed. Never throws. */
 export async function proStatus(context: vscode.ExtensionContext, force = false): Promise<ProDecision> {
   if (!force && cached && Date.now() - cached.at < 60_000) return cached.decision;
-  const now = new Date();
-  const state = await loadState(context);
-  let decision = decideOffline(state, now, devUnlocked());
-  if (!decision) {
-    if (!polarConfigured()) decision = { pro: false, reason: 'not-configured' };
-    else {
-      const result = await polarValidate(fetchImpl, { organizationId: POLAR_ORGANIZATION_ID, checkoutUrl: POLAR_CHECKOUT_URL }, state.key!, state.activationId);
-      const r = decideAfterValidation(state, now, result);
-      decision = r.decision;
-      if (JSON.stringify(r.next) !== JSON.stringify(state)) await saveState(context, r.next);
-      log(`Licence validation: ${result.ok ? result.status : result.kind} → ${decision.pro ? 'pro' : decision.reason}`);
+  if (inflight) return inflight;
+  inflight = (async () => {
+    try {
+      const now = new Date();
+      const state = await loadState(context);
+      let decision = decideOffline(state, now, devUnlocked(), force);
+      if (!decision) {
+        if (!polarConfigured()) decision = { pro: false, reason: 'not-configured' };
+        else {
+          const result = await polarValidate(fetchImpl, cfg(), state.key!, state.activationId);
+          const r = decideAfterValidation(state, now, result);
+          decision = r.decision;
+          await saveState(context, r.next);
+          log(`Licence validation: ${result.ok ? result.status : result.kind} → ${decision.pro ? 'pro (' + decision.source + ')' : decision.reason}`);
+        }
+      }
+      cached = { at: Date.now(), decision };
+      return decision;
+    } catch (e) {
+      log(`Licence check failed: ${String(e)}`);
+      const decision: ProDecision = { pro: false, reason: 'network' };
+      cached = { at: Date.now(), decision };
+      return decision;
+    } finally {
+      inflight = undefined;
     }
-  }
-  cached = { at: Date.now(), decision };
-  return decision;
+  })();
+  return inflight;
 }
 
 export async function isPro(context: vscode.ExtensionContext): Promise<boolean> {
@@ -57,7 +84,8 @@ export async function isPro(context: vscode.ExtensionContext): Promise<boolean> 
 }
 
 /**
- * Gate for Pro commands. Returns true when allowed; otherwise shows a short, honest upsell and returns false.
+ * Gate for commands that ADD Pro behaviour. Returns true when allowed; otherwise shows a short,
+ * honest upsell and returns false. Removing anything Handsfree added is always free (see features.ts).
  */
 export async function ensurePro(context: vscode.ExtensionContext, feature: string): Promise<boolean> {
   const d = await proStatus(context);
@@ -105,27 +133,40 @@ export async function activateLicenseCommand(context: vscode.ExtensionContext): 
   }
   const key = await vscode.window.showInputBox({
     title: l10n.t('Handsfree Pro — enter your licence key'),
-    prompt: l10n.t('The key from your Polar purchase e-mail. It is stored in VS Code\'s secret storage; only the key and this computer\'s name are sent to Polar.'),
+    prompt: l10n.t("The key from your Polar purchase e-mail. It is stored in VS Code's secret storage. Sent to Polar: the key, this computer's name, your OS and the extension version — nothing from your settings."),
     ignoreFocusOut: true,
     password: true,
     validateInput: (v) => (looksLikeLicenseKey(v) ? undefined : l10n.t('That does not look like a licence key')),
   });
   if (!key) return;
+  const trimmed = key.trim();
   const label = os.hostname();
   const meta = { platform: process.platform, extension: String((context.extension.packageJSON as any)?.version ?? '?') };
-  const r = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: l10n.t('Activating Handsfree Pro…') }, () =>
-    polarActivate(fetchImpl, { organizationId: POLAR_ORGANIZATION_ID, checkoutUrl: POLAR_CHECKOUT_URL }, key.trim(), label, meta),
-  );
+  const previous = await loadState(context);
+  const r = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: l10n.t('Activating Handsfree Pro…') }, async () => {
+    // Re-activating on the same computer: free the old slot first so it does not leak.
+    if (previous.key && previous.activationId) await polarDeactivate(fetchImpl, cfg(), previous.key, previous.activationId);
+    return polarActivate(fetchImpl, cfg(), trimmed, label, meta);
+  });
   if (!r.ok) {
-    const why = r.kind === 'invalid' ? l10n.t('The key was not recognised.') : r.kind === 'limit' ? l10n.t('This key has reached its activation limit or is not active: {0}. Deactivate it on another computer or contact support.', r.message) : l10n.t('Network problem: {0}', r.message);
+    const why =
+      r.kind === 'invalid'
+        ? l10n.t('The key was not recognised.')
+        : r.kind === 'limit'
+          ? l10n.t('This key has reached its activation limit or is not active: {0}. Deactivate it on another computer or contact support.', r.message)
+          : r.kind === 'unexpected'
+            ? l10n.t('The licence server answered something unexpected. Please try again later or contact support.')
+            : l10n.t('Network problem: {0}', r.message);
     void vscode.window.showErrorMessage(l10n.t('Could not activate Handsfree Pro. {0}', why));
     return;
   }
-  const state: LicenseState = { key: key.trim(), activationId: r.activationId, status: r.status, expiresAt: r.expiresAt ?? null, lastValidatedAt: new Date().toISOString(), label };
+  const nowIso = new Date().toISOString();
+  const state: LicenseState = { version: 1, key: trimmed, activationId: r.activationId, status: r.status, expiresAt: r.expiresAt ?? null, lastValidatedAt: r.status === 'granted' ? nowIso : undefined, lastCheckedAt: nowIso, label };
   await saveState(context, state);
-  cached = undefined;
-  log(`Licence activated for ${label} (activation ${r.activationId})`);
-  void vscode.window.showInformationMessage(l10n.t('Handsfree Pro activated on this computer. Thank you!'));
+  invalidateProCache();
+  log(`Licence activated for ${label} (activation ${r.activationId}, status ${r.status})`);
+  if (r.status !== 'granted') void vscode.window.showWarningMessage(l10n.t('The key was activated but its status is "{0}". Pro features stay off until Polar reports it as granted.', r.status));
+  else void vscode.window.showInformationMessage(l10n.t('Handsfree Pro activated on this computer. Thank you!'));
 }
 
 export async function deactivateLicenseCommand(context: vscode.ExtensionContext): Promise<void> {
@@ -138,19 +179,48 @@ export async function deactivateLicenseCommand(context: vscode.ExtensionContext)
   const pick = await vscode.window.showWarningMessage(l10n.t('Deactivate Handsfree Pro on this computer? The activation slot is freed so you can use the key elsewhere.'), { modal: true }, yes);
   if (pick !== yes) return;
   if (state.activationId && polarConfigured()) {
-    const ok = await polarDeactivate(fetchImpl, { organizationId: POLAR_ORGANIZATION_ID, checkoutUrl: POLAR_CHECKOUT_URL }, state.key, state.activationId);
+    const ok = await polarDeactivate(fetchImpl, cfg(), state.key, state.activationId);
     if (!ok) void vscode.window.showWarningMessage(l10n.t('Polar could not be reached; the key was removed from this computer but the activation slot may still count until you deactivate it from your Polar customer portal.'));
   }
   await saveState(context, {});
-  cached = undefined;
+  invalidateProCache();
   void vscode.window.showInformationMessage(l10n.t('Handsfree Pro deactivated on this computer.'));
+}
+
+function reasonText(d: ProDecision): string {
+  if (d.pro) {
+    switch (d.source) {
+      case 'dev':
+        return l10n.t('developer override');
+      case 'grace':
+        return l10n.t('offline grace period');
+      default:
+        return l10n.t('validated');
+    }
+  }
+  switch (d.reason) {
+    case 'no-key':
+      return l10n.t('no licence key on this computer');
+    case 'not-configured':
+      return l10n.t('licensing not configured in this build');
+    case 'invalid':
+      return l10n.t('key not recognised');
+    case 'expired':
+      return l10n.t('expired');
+    case 'grace-expired':
+      return l10n.t('offline for more than 14 days');
+    case 'revoked':
+      return l10n.t('revoked');
+    default:
+      return l10n.t('could not reach the licence server');
+  }
 }
 
 export async function licenseStatusCommand(context: vscode.ExtensionContext): Promise<void> {
   const d = await proStatus(context, true);
   const state = await loadState(context);
   const lines = [
-    d.pro ? l10n.t('Handsfree Pro: active ({0})', d.source) : l10n.t('Handsfree Pro: not active ({0})', d.reason),
+    d.pro ? l10n.t('Handsfree Pro: active ({0})', reasonText(d)) : l10n.t('Handsfree Pro: not active ({0})', reasonText(d)),
     state.label ? l10n.t('Activated as: {0}', state.label) : '',
     state.lastValidatedAt ? l10n.t('Last validated: {0}', new Date(state.lastValidatedAt).toLocaleString()) : '',
     state.expiresAt ? l10n.t('Expires: {0}', new Date(state.expiresAt).toLocaleString()) : '',

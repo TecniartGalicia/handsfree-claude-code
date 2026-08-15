@@ -74,12 +74,12 @@ The free version keeps **Enable, Revert and the Doctor forever** — that is the
 
 | Pro feature | What it does |
 | :-- | :-- |
-| **Careful profile per project** | *"Handsfree: Mark this project as careful"* writes `permissions.disableBypassPermissionsMode = "disable"` and `defaultMode = "default"` to that project's `.claude/settings.local.json`. Claude Code refuses bypass there (terminal and VS Code) while every other project stays autonomous. Remove it with one command. |
-| **Guardrails** | Pick from ready-made sets of `ask` / `deny` rules that Claude Code enforces **even in bypass mode**: ask before destructive shell commands, never read `.env` / keys / `~/.ssh`, ask before publishing packages, ask before cloud infra changes. Native rules, no hooks; toggle sets on and off. |
+| **Careful profile per project** | *"Handsfree: Mark this project as careful"* writes `permissions.disableBypassPermissionsMode = "disable"` (and `defaultMode = "default"` unless you already pinned a prompting mode) to the repository's `.claude/settings.local.json` — at the git root, which is where Claude Code reads it — and adds that file to `.git/info/exclude`. Claude Code refuses bypass there (terminal and VS Code) while every other project stays autonomous. Remove it with one command (always free). |
+| **Guardrails** | Pick from ready-made sets of `ask` / `deny` rules that Claude Code enforces **even in bypass mode**: ask before destructive shell commands, keep Claude's file tools out of `.env` / keys / `~/.ssh` (best effort — arbitrary scripts are not covered; use the sandbox for OS-level enforcement), ask before publishing packages, ask before cloud infra changes. Native rules, no hooks; toggle sets on and off; removal only takes the rules Handsfree added. |
 | **Export / import** | A small JSON with only the permission-mode keys and your ask/deny rules (never allow rules, `env` values or hooks) — to set up a second machine or share with a team. |
 | **Status bar** | After the first Handsfree command in a window: green / warning / "careful" indicator, click for the Doctor. |
 
-Licences are sold through [Polar](https://polar.sh) (merchant of record: they invoice and handle VAT). Activation sends your key and this computer's name to Polar, nothing else; the licence keeps working offline for 14 days between checks. Three computers per key; deactivate to move it. See [PRIVACY.md](PRIVACY.md).
+Licences are sold through [Polar](https://polar.sh) (merchant of record: they invoice and handle VAT, so the checkout shows the final price for your country). Activation sends your key, this computer's name, your OS and the extension version to Polar — never anything from your settings; the licence keeps working offline for 14 days between checks, and a bad answer from the licence server is never final (it is retried after 24 h). Activations per key are a limit configured on the licence (three by default); deactivate on one computer to move it. **Removing anything Pro added — a careful profile, a guardrail set — is always free**, so a lapsed licence can never leave you stuck with prompts. See [PRIVACY.md](PRIVACY.md).
 
 ## Requirements
 

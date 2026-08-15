@@ -50,7 +50,7 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": true,
-      "description": "Only reads and writes your user-level Claude Code and VS Code settings; workspace files are read for diagnostics only."
+      "description": "Reads and writes your user-level Claude Code and VS Code settings. Workspace files are read for diagnostics; the Pro \"careful profile\" writes <repo>/.claude/settings.local.json only in trusted workspaces."
     },
     "virtualWorkspaces": {
       "supported": "limited",

@@ -26,14 +26,15 @@ function unescapeTs(s: string): string {
 
 function collect(): Set<string> {
   const keys = new Set<string>();
-  const stringLit = String.raw`'((?:\\.|[^'\\])*)'`;
+  // first literal argument, single- or double-quoted (must match scripts/l10n-sync.mjs)
+  const stringLit = String.raw`(?:'((?:\\.|[^'\\])*)'|"((?:\\.|[^"\\])*)")`;
   for (const file of walk(SRC)) {
     const src = fs.readFileSync(file, 'utf8');
     const patterns = [new RegExp(String.raw`l10n\.t\(\s*` + stringLit, 'g')];
     if (file.endsWith(path.join('core', 'findings.ts'))) patterns.push(new RegExp(String.raw`(?<![\w.])t\(\s*` + stringLit, 'g'));
     for (const re of patterns) {
       let m: RegExpExecArray | null;
-      while ((m = re.exec(src))) keys.add(unescapeTs(m[1]));
+      while ((m = re.exec(src))) keys.add(unescapeTs(m[1] ?? m[2]));
     }
   }
   return keys;

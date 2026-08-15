@@ -83,3 +83,37 @@ Estado tras corrección: 62 tests unitarios + 4 de integración hermética en ve
 | 11 | Baja | Prerrequisitos de publicación | Private vulnerability reporting activado en GitHub (API); TUS-TAREAS recoge push-antes-de-publicar; PRIVACY.es.md añadido |
 
 Estado: 62 tests unitarios + 4 integración; `vsce package` sin avisos (14 ficheros, 39 KB); `.vsix` instalado con éxito en un VS Code 1.133 limpio.
+
+## F4 · Pro (2026-08-15)
+
+| # | Sev. | Hallazgo | Resolución |
+|---|------|----------|------------|
+| L1 | Alta | Trampa permanente: un estado ≠ granted (o cualquier 4xx) dejaba Pro apagado para siempre sin volver a la red | `lastCheckedAt`; se revalida a las 24 h también tras una mala respuesta; `force` siempre va a red; un 4xx es fallo blando (gracia), solo un 200 con estado explícito se persiste; tests |
+| L2 | Media | Sin timeout en `fetch` | `AbortSignal.timeout(15 s)`; test comprueba que se pasa `signal` |
+| L3 | Media | Reactivar en el mismo equipo dejaba un slot huérfano en Polar | Se desactiva la activación previa antes de activar |
+| L4 | Baja | 408/425/429 como "clave no reconocida"; `detail` array → `[object Object]`; 200 sin `id` | Transitorios → network; `detailText` formatea arrays; `unexpected` con mensaje propio |
+| L5 | Baja (aceptado) | `HANDSFREE_PRO_DEV=1` desbloquea Pro | Documentado en CONTRIBUTING como "honor system"; nada empaquetado lo activa |
+| L6 | Baja | Validaciones solapadas; comandos gratuitos tocaban secrets | Promesa en vuelo compartida; flag `hasLicense` en globalState evita leer secrets si nunca hubo licencia |
+| L7 | Baja | Reloj atrasado sin red → mensaje engañoso | Edad negativa cuenta como reciente → gracia |
+| L8 | Baja | Texto del input decía "solo clave y nombre" | Alineado con PRIVACY (SO y versión también) |
+| G1 | Alta | Poda de backups en guardarraíles/import sin proteger la copia del snapshot | Protegida (como Doctor); Revert nunca pierde su copia |
+| G2 | Alta | `settings.local.json` se lee desde la raíz git (≥2.1.211); se escribía en la carpeta abierta | `gitRootOf`; perfil escrito/leído en la raíz; el Doctor lee carpeta y raíz (dedupe); modal avisa si difieren |
+| G3 | Media | Perfil prudente pisaba un `defaultMode` propio (p. ej. `plan`) y no lo restauraba | Solo se sustituye si vacío o modo sin diálogos; se guarda el previo y se restaura al quitar; tests |
+| G4 | Media | Sobreafirmación de "no puede leer" | Textos matizados (herramientas de fichero; scripts no; también bloquea crear/editar; `.env.example`) |
+| G5 | Media | Quitar perfil/guardarraíles exigía Pro | Quitar es siempre gratis; Pro solo para añadir; README lo promete |
+| G6 | Media-baja | El Doctor no miraba `permissions.ask` | Hallazgo info con recuento (y cuántas son de Handsfree); test |
+| G7 | Media-baja | Regla borrada a mano → set "no instalado" y reglas huérfanas | `guardrailPresence` full/partial/none; preselección de parciales; quitar toma sets con alguna regla |
+| G8 | Baja | Huecos y reglas demasiado amplias | Variantes (`git push *--force*`, `git clean *`, `rm -R*`, `chmod * -R*`), `gh release create/upload/delete`, helm/kubectl drain; "mejor esfuerzo" en el detalle |
+| G9 | Baja | Quitar un set borraba reglas idénticas previas del usuario | Se registra lo añadido por set (`globalState`) y solo eso se retira; test |
+| G10 | Baja | Marcador en workspaceState (no cruza workspaces; no se limpia) | `globalState` por ruta normalizada; se limpia si el fichero desapareció |
+| G11 | Baja | Fichero podía commitearse | Se añade a `.git/info/exclude` (no toca `.gitignore`) |
+| G12 | Baja | `untrustedWorkspaces.description` desfasada; sin comprobar `isTrusted` | Descripción actualizada; se exige workspace de confianza para escribir |
+| G13 | Baja | Se borraba un fichero vacío que no habíamos creado | Solo se borra si lo creó Handsfree |
+| E1 | Media | Import sin valores antes→después, sin consentimiento de bypass ni snapshot | Modal con `clave: antes → después` y reglas; aviso oficial si el perfil enciende bypass; se crea snapshot si no existía (Revert lo deshace) |
+| E2 | Media-baja | Perfil sin validar | `parseProfile` estricto (modos conocidos, `disable`, arrays de reglas con forma válida); tests |
+| E3 | Baja | Export por defecto dentro del workspace | Por defecto en home |
+| S1-S3 | Baja | Barra: no se ocultaba sin Pro; "prudente" ocultaba avisos; ruido de log; no vigilaba `~/.claude` | Se oculta; orden error > aviso > prudente(propio) > ok; `runDoctor({quiet})`; watcher adicional sobre el directorio de settings |
+| T1-T4 | Baja | Textos: "nada más", "3 equipos", precio, `polar.ts`, detalles sin traducir, motivos crudos | Corregidos; l10n extendida a literales con comillas dobles (detectó 2 cadenas que se escapaban) |
+| Tests | — | — | +licencia (trampa, re-granted, skew, transitorios, `signal`), guardarraíles (parcial, registro de añadidos), perfil (`plan` previo, restaurar), `parseProfile` estricto, Doctor `ask.rules`; integración comprueba los 13 comandos |
+
+Estado: 78 tests unitarios + 4 integración; `l10n-sync` 230/230; build 72 KB.

@@ -10,6 +10,7 @@ import { fileExists } from '../core/jsonFile';
 import { DoctorReport, redact, renderReportMarkdown } from '../core/report';
 import { backupSettingsFile, pruneBackups } from '../core/snapshot';
 import { enableAutonomousMode } from '../commands/enable';
+import { gitRootOf } from '../pro/features';
 import { loadSnapshot, log, offerReload, openFileAt, readClaudeSettings, readManagedSettings, resolveBackupDir, resolveClaudeSettingsPath } from '../vscode/env';
 import { inspectOfficialExtension, OfficialValues, readOfficialValues } from '../vscode/officialExtension';
 import { findInstalledRogueExtensions, uninstalledThisSession, uninstallExtension } from '../vscode/rogueExtensions';
@@ -36,12 +37,19 @@ export async function collect(): Promise<DoctorInput> {
   const seen = new Set<string>([path.normalize(claudePath).toLowerCase()]);
   for (const folder of vscode.workspace.workspaceFolders ?? []) {
     if (folder.uri.scheme !== 'file') continue; // virtual workspaces: nothing to read
-    for (const name of ['settings.json', 'settings.local.json']) {
-      const p = path.join(folder.uri.fsPath, '.claude', name);
-      const key = path.normalize(p).toLowerCase();
-      if (seen.has(key)) continue; // e.g. the home folder opened as a workspace → same file as user settings
-      seen.add(key);
-      workspaceFiles.push({ path: p, result: await readJsonFile(p, READ_TIMEOUT_MS) });
+    // Claude Code (>= 2.1.211) loads settings.local.json from the git repository root; project settings
+    // from the project root. Read both the folder and its git root, de-duplicated.
+    const dirs = [folder.uri.fsPath];
+    const root = await gitRootOf(folder.uri.fsPath);
+    if (path.normalize(root).toLowerCase() !== path.normalize(folder.uri.fsPath).toLowerCase()) dirs.push(root);
+    for (const dir of dirs) {
+      for (const name of ['settings.json', 'settings.local.json']) {
+        const p = path.join(dir, '.claude', name);
+        const key = path.normalize(p).toLowerCase();
+        if (seen.has(key)) continue; // e.g. the home folder opened as a workspace → same file as user settings
+        seen.add(key);
+        workspaceFiles.push({ path: p, result: await readJsonFile(p, READ_TIMEOUT_MS) });
+      }
     }
   }
   const legacyManagedFiles: string[] = [];
@@ -66,7 +74,7 @@ export async function collect(): Promise<DoctorInput> {
   };
 }
 
-export async function runDoctor(context: vscode.ExtensionContext): Promise<DoctorReport> {
+export async function runDoctor(context: vscode.ExtensionContext, opts: { quiet?: boolean } = {}): Promise<DoctorReport> {
   const input = await collect();
   const findings = evaluate(input, l10n.t);
   const report: DoctorReport = {
@@ -81,7 +89,7 @@ export async function runDoctor(context: vscode.ExtensionContext): Promise<Docto
     },
   };
   const s = summarize(findings);
-  log(`Doctor: ${s.errors} error(s), ${s.warnings} warning(s), ${s.infos} info, ${s.oks} ok`);
+  if (!opts.quiet) log(`Doctor: ${s.errors} error(s), ${s.warnings} warning(s), ${s.infos} info, ${s.oks} ok`);
   return report;
 }
 

@@ -20,7 +20,7 @@ describe('extension (integration)', () => {
 
   it('registers its commands', async () => {
     const all = await vscode.commands.getCommands(true);
-    for (const c of ['handsfree.enable', 'handsfree.revert', 'handsfree.doctor', 'handsfree._doctorReport']) {
+    for (const c of ['handsfree.enable', 'handsfree.revert', 'handsfree.doctor', 'handsfree._doctorReport', 'handsfree.profile.careful', 'handsfree.profile.remove', 'handsfree.guardrails', 'handsfree.export', 'handsfree.import', 'handsfree.pro.activate', 'handsfree.pro.deactivate', 'handsfree.pro.status', 'handsfree.pro.buy']) {
       assert.ok(all.includes(c), `command ${c} missing`);
     }
   });

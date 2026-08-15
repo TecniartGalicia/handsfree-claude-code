@@ -21,7 +21,8 @@ function walk(dir, out = []) {
   return out;
 }
 const unescapeTs = (s) => s.replace(/\\(n|'|"|\\)/g, (_, c) => (c === 'n' ? '\n' : c));
-const stringLit = String.raw`'((?:\\.|[^'\\])*)'`;
+// first literal argument, single- or double-quoted
+const stringLit = String.raw`(?:'((?:\\.|[^'\\])*)'|"((?:\\.|[^"\\])*)")`;
 
 export function collectUsed() {
   const keys = new Set();
@@ -31,7 +32,7 @@ export function collectUsed() {
     if (file.endsWith(path.join('core', 'findings.ts'))) patterns.push(new RegExp(String.raw`(?<![\w.])t\(\s*` + stringLit, 'g'));
     for (const re of patterns) {
       let m;
-      while ((m = re.exec(src))) keys.add(unescapeTs(m[1]));
+      while ((m = re.exec(src))) keys.add(unescapeTs(m[1] ?? m[2]));
     }
   }
   return keys;
