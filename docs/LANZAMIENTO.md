@@ -83,7 +83,13 @@ Handsfree es de Argalla, la línea tecnológica de Tecniart Galicia. Si tu equip
 
 ---
 
-## 5 · Métricas
+## 5 · Publicado (2026-08-16)
+
+- X (@ArgallaTec, hilo de 4): https://x.com/ArgallaTec/status/2088882789600911679
+- LinkedIn (post bilingüe): https://www.linkedin.com/feed/update/urn:li:activity:7494652420975652864
+- Reddit: r/ClaudeAI retirado por AutoModerator (cuenta nueva; reintentar ≥ 2026-08-23), r/BuildWithClaude retirado por el filtro de Reddit (mods avisados).
+
+## 6 · Métricas
 
 - **Instalaciones**: Marketplace → Manage → Reports; Open VSX → página de la extensión.
 - **Uso**: no hay telemetría a propósito; la señal real serán issues, Discussions y reseñas.
