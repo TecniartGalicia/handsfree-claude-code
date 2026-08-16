@@ -1,6 +1,6 @@
 # Lanzamiento — Handsfree for Claude Code
 
-Textos listos para publicar desde tus cuentas (yo no tengo acceso). Cada bloque tiene versión EN (canal principal: la comunidad de Claude Code es anglófona) y ES. Los enlaces al Marketplace/Open VSX se rellenan tras la primera publicación (A6 en TUS-TAREAS).
+Textos listos para publicar desde tus cuentas. Cada bloque tiene versión EN (canal principal: la comunidad de Claude Code es anglófona) y ES. Enlaces reales (0.1.1 publicada el 2026-08-15).
 
 Reglas que sigo en todos los textos: sin "Claude" al frente del nombre, "not affiliated with Anthropic" visible, nada de prometer "cero problemas": la extensión configura lo nativo y diagnostica; el modo bypass es de Anthropic y lleva su aviso.
 
@@ -24,7 +24,7 @@ Free, MIT, English + Spanish. Not affiliated with Anthropic — and honestly, if
 
 There's an optional Pro (one-time 7 €) with per-project "careful" profiles, guardrail rule sets that keep prompting *even in bypass mode* (`ask`/`deny` rules, no hooks), export/import and a status bar. Removing anything Pro added is always free.
 
-Marketplace: https://marketplace.visualstudio.com/items?itemName=argalla.handsfree-claude-code · Open VSX (for Cursor/VSCodium — standard APIs only, not yet tested there): https://open-vsx.org/extension/argalla/handsfree-claude-code · Source: https://github.com/TecniartGalicia/handsfree-claude-code
+Marketplace: https://marketplace.visualstudio.com/items?itemName=argalla.handsfree-claude-code · Open VSX (verified in VSCodium; Cursor/Windsurf should work too — standard APIs only): https://open-vsx.org/extension/argalla/handsfree-claude-code · Source: https://github.com/TecniartGalicia/handsfree-claude-code
 
 Happy to answer questions about the settings precedence — the Doctor's texts are basically the docs' "which mode a session starts in" section, applied.
 
@@ -69,7 +69,7 @@ Gratis y de código abierto (MIT), en inglés y castellano. Sin relación con An
 
 **Pro (7 €, pago único):** perfil "prudente" por proyecto (Claude vuelve a preguntar solo en ese repositorio), guardarraíles — conjuntos de reglas `ask`/`deny` que Claude Code aplica incluso en modo bypass —, exportar/importar el perfil a otro equipo y barra de estado. Quitar lo que Pro añadió es siempre gratis.
 
-[Instalar desde el Marketplace](https://marketplace.visualstudio.com/items?itemName=argalla.handsfree-claude-code) · [Open VSX (Cursor / VSCodium; aún sin probar allí)](https://open-vsx.org/extension/argalla/handsfree-claude-code) · [Código en GitHub](https://github.com/TecniartGalicia/handsfree-claude-code)
+[Instalar desde el Marketplace](https://marketplace.visualstudio.com/items?itemName=argalla.handsfree-claude-code) · [Open VSX (VSCodium verificado; Cursor / Windsurf)](https://open-vsx.org/extension/argalla/handsfree-claude-code) · [Código en GitHub](https://github.com/TecniartGalicia/handsfree-claude-code)
 
 Handsfree es de Argalla, la línea tecnológica de Tecniart Galicia. Si tu equipo usa Claude Code y quiere una configuración coherente en todas las máquinas, hablamos.
 
