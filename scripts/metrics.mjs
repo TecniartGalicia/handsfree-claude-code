@@ -105,7 +105,18 @@ if (args.has('--append')) {
   const file = path.resolve('docs', 'METRICAS.md');
   let text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
   if (!text.includes('| Fecha |')) text = `# Métricas — Handsfree for Claude Code\n\nGeneradas con \`node scripts/metrics.mjs --append\` (APIs públicas; Polar solo con POLAR_OAT). "n/d" = no disponible.\n\n${header}\n`;
-  if (!text.includes(`| ${today} |`)) fs.writeFileSync(file, text.replace(/\n*$/, '\n') + row + '\n', 'utf8');
-  else fs.writeFileSync(file, text.replace(new RegExp(`\\| ${today} \\|.*`), row), 'utf8');
+  // Keep the daily rows inside the first table: the file also holds dashboard/sales sections below.
+  const lines = text.split('\n');
+  const headIdx = lines.findIndex((l) => l.startsWith('| Fecha |'));
+  const cols = row.split('|').length;
+  const existing = lines.findIndex((l) => l.startsWith(`| ${today} |`) && l.split('|').length === cols);
+  if (existing >= 0) {
+    lines[existing] = row;
+  } else {
+    let last = headIdx + 1; // the |---| separator
+    while (last + 1 < lines.length && lines[last + 1].startsWith('| 20')) last++;
+    lines.splice(last + 1, 0, row);
+  }
+  fs.writeFileSync(file, lines.join('\n'), 'utf8');
   console.log(`\n→ ${path.relative(process.cwd(), file)} actualizado`);
 }
