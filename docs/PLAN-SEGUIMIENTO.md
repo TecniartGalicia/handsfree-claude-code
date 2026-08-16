@@ -39,6 +39,9 @@ Reglas: honesto, útil aunque no instales nada, sin atacar a nadie, "not affilia
 
 ## 3. Espacios donde difundir (prioridad y reglas)
 
+> **Regla aprendida el 2026-08-16 (X suspendió @ArgallaTec por "inauthentic behaviors"):** en redes sociales (X, Reddit, LinkedIn, Discord) **publica el humano desde sus cuentas y su navegador habitual**; el agente prepara el texto (fichero/portapapeles) y solo usa el navegador de automatización para **leer** (comentarios, métricas, paneles) y para servicios de máquina (Marketplace, Open VSX, GitHub, Polar). Cuentas nuevas + automatización + enlaces = suspensión o filtro antispam. Nunca crear cuentas nuevas para evadir una suspensión.
+
+
 Marcar en `docs/DIFUSION.md` cada uno con fecha, URL y resultado.
 
 **A. Comunidades de Claude Code (las que importan)**
@@ -83,7 +86,7 @@ Cada hallazgo relevante → fila en DIFUSION.md (URL, qué se respondió) y, si 
 ## 6. Automatización propuesta (opcional, un comando)
 - Métricas: `node scripts/metrics.mjs --append` (sin dependencias). Para Polar por API: crear un *Organization Access Token* de solo lectura (polar.sh → Settings → Developers → New token, scopes `orders:read`, `license_keys:read`) y guardarlo como `POLAR_OAT=` en `Documents/handsfree-secrets.txt`.
 - Rutina semanal (Claude Code): `/loop 7d` con el prompt "ejecuta node scripts/metrics.mjs --append en handsfree-claude-code, lee issues/discussions/reseñas/Q&A y los hilos de X/LinkedIn/Reddit publicados en DIFUSION.md, resume en 10 líneas y propón la pieza de contenido de la semana según PLAN-SEGUIMIENTO §2" — o una rutina en la nube con `/schedule` si se prefiere que corra sin el equipo encendido.
-- Reddit/X con sesión: el navegador de automatización (`~/handsfree-browser`) mantiene las sesiones; el agente puede leer comentarios y borradores, y publicar previa aprobación del texto.
+- Reddit/X con sesión: el navegador de automatización (`~/handsfree-browser`) mantiene las sesiones **solo para leer** (comentarios, menciones); publicar en redes lo hace el humano desde su navegador (ver la regla del §3).
 
 ## 7. Lo que necesita el humano (mínimo)
 - [ ] Repostear el lanzamiento desde su cuenta personal de X y LinkedIn (las de Argalla tienen 0 seguidores).
