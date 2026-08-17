@@ -35,7 +35,9 @@ async function main(): Promise<void> {
       ...(vscodeExecutablePath ? { vscodeExecutablePath } : {}),
       extensionDevelopmentPath,
       extensionTestsPath,
-      launchArgs: [workspace, `--user-data-dir=${path.join(extensionDevelopmentPath, '.vscode-test', 'user-data')}`, '--disable-extensions'],
+      // A temp profile per run: globalState/secrets (where the Pro licence lives) and the workspace-trust
+      // decision must not leak between runs, and it is removed with `tmp` in the finally below.
+      launchArgs: [workspace, `--user-data-dir=${path.join(tmp, 'user-data')}`, '--disable-extensions', '--disable-workspace-trust'],
       extensionTestsEnv: { CLAUDE_CONFIG_DIR: configDir, HANDSFREE_IT_TMP: tmp },
     });
   } finally {

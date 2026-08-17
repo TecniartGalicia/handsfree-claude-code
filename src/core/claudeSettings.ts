@@ -30,6 +30,10 @@ export function applyAutonomous(input: ClaudeSettings | undefined): { next: Clau
   const next: ClaudeSettings = isPlainObject(input) ? clone(input) : {};
   const changes: Change[] = [];
 
+  // Valid JSON whose root is not an object (an array, a number, a string…): Claude Code ignores such a
+  // file anyway, but replacing it silently would hide a real loss — record it so the consent dialog shows it.
+  if (input !== undefined && !isPlainObject(input)) changes.push({ path: '', from: input, to: {} });
+
   if (!isPlainObject(next.permissions)) {
     if (next.permissions !== undefined) changes.push({ path: 'permissions', from: next.permissions, to: {} });
     next.permissions = {};
@@ -207,7 +211,9 @@ const RENAMED_TOOLS: Record<string, string> = {
   MultiEdit: 'Edit',
 };
 
-const FOREIGN_RULE_PATTERNS: RegExp[] = [/^__.*__$/, /auto[-_]?accept/i, /auto[-_]?approve/i];
+// Only bare pseudo-tools (`__claude-auto-approve__`, `auto-accept`) — never `Tool(pattern)` rules, where
+// "auto-accept" may simply be part of a legitimate command (`Bash(npm run auto-accept-check *)`).
+const FOREIGN_RULE_PATTERNS: RegExp[] = [/^__.*__$/, /^[^()]*auto[-_]?accept[^()]*$/i, /^[^()]*auto[-_]?approve[^()]*$/i];
 
 /**
  * Flags allow-list entries that do nothing (or belong to other tools). Conservative on purpose:
@@ -225,7 +231,7 @@ export function findStaleAllowRules(allow: unknown): StaleRule[] {
       out.push({ rule, reason: 'redundant-wildcard', detail: `"${wild[1]}" already allows everything for that tool` });
       continue;
     }
-    if (rule in RENAMED_TOOLS) {
+    if (Object.prototype.hasOwnProperty.call(RENAMED_TOOLS, rule)) {
       out.push({ rule, reason: 'renamed-tool', detail: `Tool "${rule}" is now "${RENAMED_TOOLS[rule]}"` });
       continue;
     }
@@ -240,11 +246,14 @@ export function findStaleAllowRules(allow: unknown): StaleRule[] {
   return out;
 }
 
-export function removeAllowRules(input: ClaudeSettings, rules: string[]): ClaudeSettings {
+export function removeAllowRules(input: ClaudeSettings, rules: string[]): { next: ClaudeSettings; removed: number } {
   const next = clone(input);
   const set = new Set(rules);
+  let removed = 0;
   if (isPlainObject(next.permissions) && Array.isArray(next.permissions.allow)) {
+    const before = next.permissions.allow.length;
     next.permissions.allow = next.permissions.allow.filter((r: unknown) => !(typeof r === 'string' && set.has(r)));
+    removed = before - next.permissions.allow.length;
   }
-  return next;
+  return { next, removed };
 }

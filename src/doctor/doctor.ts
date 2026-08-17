@@ -101,7 +101,11 @@ interface Item extends vscode.QuickPickItem {
 }
 
 function redactOpts(): { extraDirs: string[] } {
-  return { extraDirs: [claudeConfigDir(), path.dirname(resolveClaudeSettingsPath())] };
+  // Only directories OUTSIDE home (that is what they are for: CLAUDE_CONFIG_DIR elsewhere). Adding
+  // `~/.claude` would collapse to `~` and the report would say `~\settings.json`, hiding where the file is.
+  const home = os.homedir().toLowerCase();
+  const dirs = [claudeConfigDir(), path.dirname(resolveClaudeSettingsPath())].filter((d) => !d.toLowerCase().startsWith(home));
+  return { extraDirs: [...new Set(dirs)] };
 }
 
 /** Interactive Doctor: list → pick → fix → re-run, until the user closes it. */
@@ -214,9 +218,11 @@ async function applyFix(context: vscode.ExtensionContext, fix: FixKind, finding?
         else void vscode.window.showInformationMessage(l10n.t('{0} hook(s) removed. Backup: {1}', removed, backup ?? '-'));
         log(`Doctor: removed ${removed} hook(s), skipped ${skipped.length} (backup ${backup ?? 'n/a'})`);
       } else {
-        await writeJsonFileAtomic(settingsPath, removeAllowRules(current.data, fix.rules));
-        void vscode.window.showInformationMessage(l10n.t('{0} allow rule(s) removed. Backup: {1}', fix.rules.length, backup ?? '-'));
-        log(`Doctor: clean-allow applied (backup ${backup ?? 'n/a'})`);
+        const { next, removed } = removeAllowRules(current.data, fix.rules);
+        if (removed > 0) await writeJsonFileAtomic(settingsPath, next);
+        if (removed === 0) void vscode.window.showWarningMessage(l10n.t('Those allow rules are not there any more; the file was left untouched. Run the Doctor again.'));
+        else void vscode.window.showInformationMessage(l10n.t('{0} allow rule(s) removed. Backup: {1}', removed, backup ?? '-'));
+        log(`Doctor: clean-allow removed ${removed} rule(s) (backup ${backup ?? 'n/a'})`);
       }
       return;
     }

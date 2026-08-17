@@ -14,7 +14,18 @@ const STATE_CONSENT = 'handsfree.consentAcceptedAt';
 let channel: vscode.OutputChannel | undefined;
 
 export function output(): vscode.OutputChannel {
-  if (!channel) channel = vscode.window.createOutputChannel(OUTPUT_NAME);
+  if (!channel) {
+    const created = vscode.window.createOutputChannel(OUTPUT_NAME);
+    channel = created;
+    // Reset the module-level handle when VS Code disposes it, so a second activate() in the same
+    // extension host (what the integration suite does) creates a fresh channel instead of writing
+    // into a disposed one.
+    const dispose = created.dispose.bind(created);
+    created.dispose = () => {
+      channel = undefined;
+      dispose();
+    };
+  }
   return channel;
 }
 
@@ -69,7 +80,9 @@ async function listDropins(dir: string): Promise<string[]> {
 export async function storeSnapshot(context: vscode.ExtensionContext, snap: Snapshot): Promise<void> {
   await context.globalState.update(STATE_SNAPSHOT, snap);
   try {
-    await saveSnapshot(resolveBackupDir(), snap);
+    // Next to the file the snapshot is about: `handsfree.claudeSettingsPath` may change later, and a
+    // snapshot left in the old directory would be picked up by a future Enable and replay a stale state.
+    await saveSnapshot(backupDir(snap.claude.settingsPath), snap);
   } catch (e) {
     log(`Could not write snapshot file: ${String(e)}`);
   }
@@ -81,13 +94,27 @@ export async function loadSnapshot(context: vscode.ExtensionContext): Promise<Sn
   return loadSnapshotFile(resolveBackupDir());
 }
 
-/** Forget the snapshot everywhere (state + file) so a second Revert cannot replay it. */
-export async function clearSnapshot(context: vscode.ExtensionContext): Promise<void> {
+/** Where the Claude settings path override is invalid (relative): the resolver ignores it, tell the user once. */
+export function claudeSettingsOverrideIsRelative(): string | undefined {
+  const override = (vscode.workspace.getConfiguration('handsfree').get<string>('claudeSettingsPath') ?? '').trim();
+  if (!override || override.startsWith('~')) return undefined;
+  return path.isAbsolute(override) ? undefined : override;
+}
+
+/**
+ * Forget the snapshot everywhere (state + file) so a second Revert cannot replay it. Pass the snapshot
+ * that was just reverted so the file is retired in ITS directory (the setting may point elsewhere now);
+ * both directories are tried, since either copy left behind would be replayed later.
+ */
+export async function clearSnapshot(context: vscode.ExtensionContext, snap?: Snapshot): Promise<void> {
   await context.globalState.update(STATE_SNAPSHOT, undefined);
-  try {
-    await retireSnapshotFile(resolveBackupDir());
-  } catch (e) {
-    log(`Could not retire snapshot file: ${String(e)}`);
+  const dirs = new Set([resolveBackupDir(), ...(snap ? [backupDir(snap.claude.settingsPath)] : [])]);
+  for (const dir of dirs) {
+    try {
+      await retireSnapshotFile(dir);
+    } catch (e) {
+      log(`Could not retire snapshot file in ${dir}: ${String(e)}`);
+    }
   }
 }
 

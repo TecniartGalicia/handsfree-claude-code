@@ -9,16 +9,24 @@ on:
     tags: ['v*.*.*']
 
 permissions:
-  contents: write
+  contents: read
+
+# Two tags in a row must not race for the same version.
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: write # only this job creates the GitHub release
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false # nothing here pushes; do not leave a token in .git/config during npm ci
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -37,26 +45,32 @@ jobs:
       - run: npm run check
       - run: node scripts/l10n-sync.mjs
       - run: npx vsce package --no-dependencies -o "handsfree-claude-code-${GITHUB_REF_NAME}.vsix"
-      - name: Publish to Visual Studio Marketplace (skips if this version is already there)
+      # Publish, and treat "this version is already there" as success. Asking first is not enough: the
+      # gallery answers from caches that disagree for hours, so a re-run after a partial failure could
+      # both skip a missing version and fail on an existing one.
+      - name: Publish to Visual Studio Marketplace
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
-          VER="${GITHUB_REF_NAME#v}"
-          # `vsce show` prints "undefined" (not JSON) when the extension is not published yet: treat anything unparsable as "not there".
-          if npx vsce show argalla.handsfree-claude-code --json 2>/dev/null | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{let j={};try{j=JSON.parse(d)||{}}catch{}process.exit((j.versions||[]).some(v=>v.version==='$VER')?0:1)})"; then
-            echo "Marketplace already has $VER — skipping"
+          set -o pipefail
+          if out=$(npx vsce publish --no-dependencies --packagePath "handsfree-claude-code-${GITHUB_REF_NAME}.vsix" 2>&1); then
+            echo "$out"
           else
-            npx vsce publish --no-dependencies --packagePath "handsfree-claude-code-${GITHUB_REF_NAME}.vsix"
+            echo "$out"
+            echo "$out" | grep -qiE "already exists|already published" || exit 1
+            echo "Marketplace already has this version — continuing"
           fi
-      - name: Publish to Open VSX (skips if this version is already there)
+      - name: Publish to Open VSX
         env:
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+          OVSX_PAT: ${{ secrets.OVSX_PAT }} # ovsx reads the token from the environment; never pass it on the command line
         run: |
-          VER="${GITHUB_REF_NAME#v}"
-          if npx ovsx get argalla.handsfree-claude-code -v "$VER" --metadata >/dev/null 2>&1; then
-            echo "Open VSX already has $VER — skipping"
+          set -o pipefail
+          if out=$(npx ovsx publish "handsfree-claude-code-${GITHUB_REF_NAME}.vsix" 2>&1); then
+            echo "$out"
           else
-            npx ovsx publish "handsfree-claude-code-${GITHUB_REF_NAME}.vsix" -p "$OVSX_PAT"
+            echo "$out"
+            echo "$out" | grep -qiE "already exists|already published" || exit 1
+            echo "Open VSX already has this version — continuing"
           fi
       - name: GitHub release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2

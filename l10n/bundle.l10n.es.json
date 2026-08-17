@@ -234,5 +234,22 @@
   "This computer's previous activation was released in the process; enter the key again in a minute.": "En el proceso se liberó la activación anterior de este equipo; vuelve a introducir la clave dentro de un minuto.",
   "Deactivating Handsfree Pro…": "Desactivando Handsfree Pro…",
   "this computer's activation was removed — enter the key again": "la activación de este equipo se retiró: vuelve a introducir la clave",
-  "Checking Handsfree Pro licence…": "Comprobando la licencia de Handsfree Pro…"
+  "Checking Handsfree Pro licence…": "Comprobando la licencia de Handsfree Pro…",
+  "A managed policy file exists but could not be read: {0} ({1}). Nothing was changed — ask your administrator.": "Existe un fichero de política gestionada que no se ha podido leer: {0} ({1}). No se cambió nada: pregunta a tu administrador.",
+  "{0} changed while the dialog was open and is not valid JSON any more: {1}. Nothing was changed.": "{0} cambió mientras el diálogo estaba abierto y ya no es JSON válido: {1}. No se cambió nada.",
+  "Revert could not finish, so the saved snapshot was kept: fix the problem above and run \"Handsfree: Revert\" again.": "Revertir no pudo terminar, así que se conservó la instantánea guardada: arregla el problema anterior y vuelve a ejecutar «Handsfree: Revertir».",
+  "enable autonomous mode": "activar modo autónomo",
+  "revert": "revertir",
+  "doctor": "doctor",
+  "careful profile": "perfil prudente",
+  "remove careful profile": "quitar perfil prudente",
+  "guardrails": "guardarraíles",
+  "export profile": "exportar perfil",
+  "import profile": "importar perfil",
+  "activate licence": "activar licencia",
+  "deactivate licence": "desactivar licencia",
+  "licence status": "estado de la licencia",
+  "get a licence": "conseguir una licencia",
+  "Those allow rules are not there any more; the file was left untouched. Run the Doctor again.": "Esas reglas allow ya no están; el fichero se dejó intacto. Vuelve a ejecutar el Doctor.",
+  "Handsfree Pro is active, but this computer's previous activation could not be released; it may still count against the activation limit. You can free it from your Polar customer portal.": "Handsfree Pro está activo, pero no se pudo liberar la activación anterior de este equipo; puede seguir contando para el límite de activaciones. Puedes liberarla desde tu portal de cliente de Polar."
 }

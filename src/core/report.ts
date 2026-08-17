@@ -48,8 +48,8 @@ export function redact(text: string, opts: RedactOptions = {}): string {
   if (user && user.length > 1) {
     const u = escapeRe(user);
     // C:\Users\<user>, /home/<user>, /Users/<user> — any casing on Windows
-    out = out.replace(new RegExp(`([A-Za-z]:[\\\\/]Users[\\\\/])${u}(?=$|[\\\\/\\s"'])`, flags), '$1<user>');
-    out = out.replace(new RegExp(`(/home/|/Users/)${u}(?=$|[/\\s"'])`, 'g'), '$1<user>');
+    // Any drive letter or UNC share: \\nas01\Users\alice and \\srv\home\alice count too.
+    out = out.replace(new RegExp(`([\\\\/](?:Users|home)[\\\\/])${u}(?=$|[\\\\/\\s"'])`, flags), '$1<user>');
   }
   return out;
 }

@@ -16,6 +16,7 @@ import { log, output } from './vscode/env';
 export function activate(context: vscode.ExtensionContext): void {
   setOwnedProfileProvider(() => ownedProfilePaths(context));
 
+  // The name shown in the error toast must be translated too (it used to be an English literal).
   const wrap = (name: string, fn: () => Promise<void>) => async () => {
     try {
       await fn();
@@ -30,19 +31,19 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     output(),
-    vscode.commands.registerCommand('handsfree.enable', wrap('enable', () => enableAutonomousMode(context))),
-    vscode.commands.registerCommand('handsfree.revert', wrap('revert', () => revertAutonomousMode(context))),
-    vscode.commands.registerCommand('handsfree.doctor', wrap('doctor', () => showDoctor(context))),
+    vscode.commands.registerCommand('handsfree.enable', wrap(l10n.t('enable autonomous mode'), () => enableAutonomousMode(context))),
+    vscode.commands.registerCommand('handsfree.revert', wrap(l10n.t('revert'), () => revertAutonomousMode(context))),
+    vscode.commands.registerCommand('handsfree.doctor', wrap(l10n.t('doctor'), () => showDoctor(context))),
     // Pro
-    vscode.commands.registerCommand('handsfree.profile.careful', wrap('careful profile', () => markProjectCareful(context))),
-    vscode.commands.registerCommand('handsfree.profile.remove', wrap('remove careful profile', () => unmarkProjectCareful(context))),
-    vscode.commands.registerCommand('handsfree.guardrails', wrap('guardrails', () => chooseGuardrails(context))),
-    vscode.commands.registerCommand('handsfree.export', wrap('export', () => exportProfile(context))),
-    vscode.commands.registerCommand('handsfree.import', wrap('import', () => importProfile(context))),
-    vscode.commands.registerCommand('handsfree.pro.activate', wrap('activate licence', () => activateLicenseCommand(context))),
-    vscode.commands.registerCommand('handsfree.pro.deactivate', wrap('deactivate licence', () => deactivateLicenseCommand(context))),
-    vscode.commands.registerCommand('handsfree.pro.status', wrap('licence status', () => licenseStatusCommand(context))),
-    vscode.commands.registerCommand('handsfree.pro.buy', wrap('buy', () => openCheckout())),
+    vscode.commands.registerCommand('handsfree.profile.careful', wrap(l10n.t('careful profile'), () => markProjectCareful(context))),
+    vscode.commands.registerCommand('handsfree.profile.remove', wrap(l10n.t('remove careful profile'), () => unmarkProjectCareful(context))),
+    vscode.commands.registerCommand('handsfree.guardrails', wrap(l10n.t('guardrails'), () => chooseGuardrails(context))),
+    vscode.commands.registerCommand('handsfree.export', wrap(l10n.t('export profile'), () => exportProfile(context))),
+    vscode.commands.registerCommand('handsfree.import', wrap(l10n.t('import profile'), () => importProfile(context))),
+    vscode.commands.registerCommand('handsfree.pro.activate', wrap(l10n.t('activate licence'), () => activateLicenseCommand(context))),
+    vscode.commands.registerCommand('handsfree.pro.deactivate', wrap(l10n.t('deactivate licence'), () => deactivateLicenseCommand(context))),
+    vscode.commands.registerCommand('handsfree.pro.status', wrap(l10n.t('licence status'), () => licenseStatusCommand(context))),
+    vscode.commands.registerCommand('handsfree.pro.buy', wrap(l10n.t('get a licence'), () => openCheckout())),
     // Internal, non-interactive: used by tests and by the status bar. Not listed in the palette.
     vscode.commands.registerCommand('handsfree._doctorReport', () => runDoctor(context)),
   );

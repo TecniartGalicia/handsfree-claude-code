@@ -20,10 +20,19 @@ export async function ensureStatusBar(context: vscode.ExtensionContext): Promise
     return;
   }
   if (!item) {
-    item = vscode.window.createStatusBarItem('handsfree.status', vscode.StatusBarAlignment.Right, 50);
-    item.name = 'Handsfree for Claude Code';
-    item.command = 'handsfree.doctor';
-    context.subscriptions.push(item);
+    const created = vscode.window.createStatusBarItem('handsfree.status', vscode.StatusBarAlignment.Right, 50);
+    item = created;
+    created.name = 'Handsfree for Claude Code';
+    created.command = 'handsfree.doctor';
+    context.subscriptions.push(created);
+    // Forget the disposed item (and stop the pending refresh) so a later activate() rebuilds it.
+    context.subscriptions.push({
+      dispose: () => {
+        if (timer) clearTimeout(timer);
+        timer = undefined;
+        item = undefined;
+      },
+    });
     context.subscriptions.push(
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('claudeCode') || e.affectsConfiguration('handsfree')) scheduleRefresh(context);

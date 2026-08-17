@@ -150,11 +150,16 @@ export async function writeJsonFileAtomic(file: string, data: unknown): Promise<
   const tmp = `${target}.handsfree-${process.pid}-${Date.now()}.tmp`;
   await fs.writeFile(tmp, text, mode !== undefined ? { encoding: 'utf8', mode } : 'utf8');
   try {
-    await fs.rename(tmp, target);
-  } catch {
-    // Windows can refuse to rename over a file another process holds open;
-    // fall back to a direct write (still complete content, single write call).
-    await fs.writeFile(target, text, 'utf8');
+    try {
+      await fs.rename(tmp, target);
+    } catch {
+      // Windows can refuse to rename over a file another process holds open;
+      // fall back to a direct write (still complete content, single write call).
+      await fs.writeFile(target, text, 'utf8');
+    }
+  } finally {
+    // The temp file holds a full copy of the settings (secrets included): remove it on every path,
+    // including when the fallback write throws too (read-only file, disk full).
     try {
       await fs.rm(tmp, { force: true });
     } catch {

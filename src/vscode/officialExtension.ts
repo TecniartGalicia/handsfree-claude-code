@@ -83,14 +83,20 @@ function scopeOf(inspect: ReturnType<vscode.WorkspaceConfiguration['inspect']>):
   return 'unset';
 }
 
-/** Effective values plus their origin. */
+/**
+ * Values as the user set them, plus their origin. Deliberately NOT `cfg.get()`: VS Code invents a default
+ * per type for settings declared without one (`""` for a string, `false` for a boolean), so `get()` can
+ * never report "unset" — and "starting mode not pinned" is precisely what the Doctor must explain (an
+ * unpinned mode means the sticky mode indicator wins over permissions.defaultMode). Both keys are
+ * `scope: machine`, so the user value is the global one.
+ */
 export function readOfficialValues(): OfficialValues {
   const cfg = vscode.workspace.getConfiguration(SECTION);
   const allowI = cfg.inspect<boolean>(KEY_ALLOW);
   const modeI = cfg.inspect<string>(KEY_MODE);
   return {
-    allow: cfg.get<boolean>(KEY_ALLOW),
-    mode: cfg.get<string>(KEY_MODE),
+    allow: allowI?.globalValue,
+    mode: modeI?.globalValue,
     allowScope: scopeOf(allowI),
     modeScope: scopeOf(modeI),
   };

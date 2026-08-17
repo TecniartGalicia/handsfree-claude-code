@@ -17,7 +17,13 @@ export function claudeSettingsPath(
   env: NodeJS.ProcessEnv = process.env,
   home: string = os.homedir(),
 ): string {
-  if (override && override.trim()) return expandHome(override.trim(), home);
+  const raw = override?.trim();
+  if (raw) {
+    const expanded = expandHome(raw, home);
+    // A relative override would resolve against the extension host's cwd (VS Code's install directory):
+    // writing, backing up and restoring there would be surprising, so fall back to the default.
+    if (path.isAbsolute(expanded)) return expanded;
+  }
   return path.join(claudeConfigDir(env, home), 'settings.json');
 }
 

@@ -157,9 +157,12 @@ describe('findStaleAllowRules', () => {
   it('removeAllowRules removes only the listed rules', () => {
     const s = load('settings.with-rogue-hook.json');
     const stale = findStaleAllowRules(s.permissions.allow).map((r) => r.rule);
-    const next = removeAllowRules(s, stale);
+    const { next, removed } = removeAllowRules(s, stale);
     assert.strictEqual(next.permissions.allow.length, s.permissions.allow.length - stale.length);
+    assert.strictEqual(removed, stale.length, 'reports how many rules were actually removed');
     assert.ok(next.permissions.allow.includes('Bash'));
     assert.ok(!next.permissions.allow.includes('__claude-auto-approve__'));
+    // Rules that are no longer there: nothing to remove, and the caller must be able to tell.
+    assert.strictEqual(removeAllowRules(next, stale).removed, 0);
   });
 });

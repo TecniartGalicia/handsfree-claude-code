@@ -90,9 +90,27 @@ export function maskSecrets(s: string): string {
   return s
     .replace(/(authorization\s*[:=]\s*["']?(?:bearer|basic|token)?\s*)([^\s"']+)/gi, '$1***')
     .replace(/\b(bearer\s+)([^\s"']{6,})/gi, '$1***')
-    .replace(/((?:api[_-]?key|token|secret|password|passwd)\s*[:=]\s*["']?)([^\s"']+)/gi, '$1***')
+    // credentials inside a URL (postgres://user:pass@host) and webhook paths carry no key name
+    .replace(/(\b[a-z][a-z0-9+.-]*:\/\/[^\s:@/]+:)([^\s@/]+)(?=@)/gi, '$1***')
+    .replace(/(hooks\.slack\.com\/services\/)[^\s"']+/gi, '$1***')
+    // key-ish name, optional suffix (SECRET_ACCESS_KEY=…), separator may be ':', '=' or a space
+    .replace(/((?:api[_-]?key|access[_-]?key|secret|token|password|passwd)[a-z0-9_-]*\s*[:=]\s*["']?|(?:api[_-]?key|access[_-]?key|secret|token|password|passwd)[a-z0-9_-]*\s+)([^\s"']{6,})/gi, '$1***')
     .replace(/\b(sk-[A-Za-z0-9_-]{6})[A-Za-z0-9_-]{6,}/g, '$1***')
     .replace(/\b(gh[pousr]_[A-Za-z0-9]{4})[A-Za-z0-9]{10,}/g, '$1***');
+}
+
+/** `ask` rules force a prompt in any mode and from any scope, so they must be reported wherever they live. */
+function askRulesFinding(id: string, data: ClaudeSettings | undefined, where: string, severity: Severity, t: Translate): Finding | undefined {
+  const rules: string[] = Array.isArray(data?.permissions?.ask) ? data!.permissions.ask.filter((r: unknown): r is string => typeof r === 'string') : [];
+  if (!rules.length) return undefined;
+  const ours = allTemplateRules();
+  const mine = rules.filter((r) => ours.has(r)).length;
+  return {
+    id,
+    severity,
+    title: t('{0} ask rule(s) force a prompt even in bypass mode ({1} from Handsfree guardrails)', rules.length, mine),
+    detail: rules.map(maskSecrets).join('\n') + '\n' + t('This is by design: an explicit ask rule always prompts. Use "Handsfree: Guardrails" to change the Handsfree sets, or edit permissions.ask in {0}.', where),
+  };
 }
 
 function staleRuleText(r: StaleRule, t: Translate): string {
@@ -247,17 +265,8 @@ export function evaluate(input: DoctorInput, t: Translate = defaultT): Finding[]
     if (!hooks.length && settings) out.push({ id: 'hooks.none', severity: 'ok', title: t('No permission-deciding hooks in {0}', input.claudePath) });
 
     // ---- 4b. Ask rules: they force a prompt even in bypass mode (that is their point) --------------
-    const askRules: string[] = Array.isArray(settings?.permissions?.ask) ? settings!.permissions.ask.filter((r: unknown): r is string => typeof r === 'string') : [];
-    if (askRules.length) {
-      const ours = allTemplateRules();
-      const mine = askRules.filter((r) => ours.has(r)).length;
-      out.push({
-        id: 'ask.rules',
-        severity: 'info',
-        title: t('{0} ask rule(s) force a prompt even in bypass mode ({1} from Handsfree guardrails)', askRules.length, mine),
-        detail: askRules.map(maskSecrets).join('\n') + '\n' + t('This is by design: an explicit ask rule always prompts. Use "Handsfree: Guardrails" to change the Handsfree sets, or edit permissions.ask in {0}.', input.claudePath),
-      });
-    }
+    const askFinding = askRulesFinding('ask.rules', settings, input.claudePath, 'info', t);
+    if (askFinding) out.push(askFinding);
 
     // ---- 5. Allow-list hygiene ---------------------------------------------------------------
     const stale: StaleRule[] = findStaleAllowRules(settings?.permissions?.allow);
@@ -266,7 +275,7 @@ export function evaluate(input: DoctorInput, t: Translate = defaultT): Finding[]
         id: 'allow.stale',
         severity: 'info',
         title: t('{0} allow rule(s) that do nothing', stale.length),
-        detail: stale.map((s) => staleRuleText(s, t)).join('\n'),
+        detail: stale.map((s) => maskSecrets(staleRuleText(s, t))).join('\n'),
         fix: { kind: 'clean-allow', rules: stale.map((s) => s.rule) },
       });
     }

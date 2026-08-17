@@ -1,7 +1,8 @@
+import { backupDir } from '../core/paths';
 import * as vscode from 'vscode';
 import { l10n } from 'vscode';
 import { backupSettingsFile, pruneBackups, restoreClaudeSettings, settingsChangedSinceSnapshot } from '../core/snapshot';
-import { clearSnapshot, loadSnapshot, log, offerReload, resolveBackupDir } from '../vscode/env';
+import { clearSnapshot, loadSnapshot, log, offerReload } from '../vscode/env';
 import { inspectOfficialExtension, restoreOfficialGlobalValues } from '../vscode/officialExtension';
 
 /**
@@ -36,8 +37,15 @@ export async function revertAutonomousMode(context: vscode.ExtensionContext): Pr
   const pick = await vscode.window.showWarningMessage(l10n.t('Revert to the settings from before autonomous mode was enabled?'), { modal: true, detail: lines.join('\n') }, revert);
   if (pick !== revert) return;
 
-  const safety = await backupSettingsFile(snap.claude.settingsPath, resolveBackupDir(), new Date(), 'before-revert');
-  await pruneBackups(resolveBackupDir(), 10, [safety, snap.claude.backupPath]);
+  // Use the directory that belongs to the file recorded in the snapshot: `handsfree.claudeSettingsPath`
+  // may have changed since Enable, and the backup/snapshot of that run live next to the old file.
+  const dir = backupDir(snap.claude.settingsPath);
+  const safety = await backupSettingsFile(snap.claude.settingsPath, dir, new Date(), 'before-revert');
+  try {
+    await pruneBackups(dir, 10, [safety, snap.claude.backupPath]);
+  } catch (e) {
+    log(`Pruning old backups failed (harmless): ${String(e)}`);
+  }
   log(`Revert: safety copy ${safety ?? 'n/a (file missing)'}`);
 
   const outcome = await restoreClaudeSettings(snap);
@@ -50,14 +58,23 @@ export async function revertAutonomousMode(context: vscode.ExtensionContext): Pr
 
   // The claudeCode.* keys live in VS Code's own settings, so they can be restored whether or not
   // the official extension is currently installed.
+  let vsRestored = false;
   try {
     await restoreOfficialGlobalValues({ allow: snap.vscode.allowDangerouslySkipPermissions, mode: snap.vscode.initialPermissionMode });
+    vsRestored = true;
     log('Revert: VS Code claudeCode.* restored');
   } catch (e) {
     log(`Revert: VS Code settings restore failed: ${String(e)}`);
     void vscode.window.showErrorMessage(l10n.t('Claude settings were restored, but the VS Code settings could not be written: {0}.', String(e)));
   }
 
-  await clearSnapshot(context);
-  await offerReload(l10n.t('Previous settings restored. Reload the window so the Claude Code extension picks them up.'));
+  // Only forget the snapshot when everything really went back: otherwise the user must be able to
+  // run Revert again (and still see which values it would restore).
+  if (outcome !== 'backup-missing' && vsRestored) {
+    await clearSnapshot(context, snap);
+    await offerReload(l10n.t('Previous settings restored. Reload the window so the Claude Code extension picks them up.'));
+  } else {
+    log('Revert incomplete: snapshot kept so it can be retried');
+    void vscode.window.showWarningMessage(l10n.t('Revert could not finish, so the saved snapshot was kept: fix the problem above and run "Handsfree: Revert" again.'));
+  }
 }

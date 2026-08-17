@@ -72,13 +72,21 @@ export async function enableAutonomousMode(context: vscode.ExtensionContext): Pr
       void vscode.window.showErrorMessage(l10n.t('Bypass mode is disabled by a managed policy file: {0}. Nothing was changed.', managed.path));
       return;
     }
+    if (!managed.result.ok) {
+      // An unreadable/broken policy file may or may not forbid bypass mode: do not assume it does not.
+      void vscode.window.showErrorMessage(l10n.t('A managed policy file exists but could not be read: {0} ({1}). Nothing was changed — ask your administrator.', managed.path, managed.result.error.message));
+      log(`Enable aborted: managed policy unreadable at ${managed.path}: ${managed.result.error.message}`);
+      return;
+    }
   }
 
   // 2. Nothing to do?
-  const { next, changes } = applyAutonomous(current.exists ? current.data : undefined);
-  const prevVs = contract.installed ? readOfficialGlobalValues() : {};
+  const preview = applyAutonomous(current.exists ? current.data : undefined);
+  // Read the previous claudeCode.* values even when the official extension is not installed: the keys
+  // live in VS Code's own settings and survive uninstalling it, so Revert must be able to put them back.
+  const prevVs = readOfficialGlobalValues();
   const vsNeedsWrite = contract.installed && (prevVs.allow !== true || prevVs.mode !== BYPASS_MODE);
-  if (changes.length === 0 && !vsNeedsWrite) {
+  if (preview.changes.length === 0 && !vsNeedsWrite) {
     const doctor = l10n.t('Run Doctor');
     const pick = await vscode.window.showInformationMessage(l10n.t('Autonomous mode is already configured. Nothing was changed. If Claude still asks for permission, the Doctor will tell you why.'), doctor);
     if (pick === doctor) await vscode.commands.executeCommand('handsfree.doctor');
@@ -109,6 +117,20 @@ export async function enableAutonomousMode(context: vscode.ExtensionContext): Pr
   }
   await recordConsent(context);
 
+  // 3b. The consent modal has no time limit: Claude Code or the user may have written to the file while it
+  // was open. Re-read and recompute so those edits are preserved instead of silently overwritten.
+  const fresh = await readClaudeSettings();
+  if (!fresh.ok) {
+    void vscode.window.showErrorMessage(
+      l10n.t('{0} changed while the dialog was open and is not valid JSON any more: {1}. Nothing was changed.', settingsPath, fresh.error.message),
+    );
+    log(`Enable aborted: settings became unreadable during consent (${fresh.error.message})`);
+    return;
+  }
+  const applied = applyAutonomous(fresh.exists ? fresh.data : undefined);
+  const next = applied.next;
+  const changes = applied.changes;
+
   // 4. Snapshot (keep the original one if the user never reverted)
   const dir = resolveBackupDir();
   const backupPath = await backupSettingsFile(settingsPath, dir, new Date(), 'before-enable');
@@ -121,7 +143,9 @@ export async function enableAutonomousMode(context: vscode.ExtensionContext): Pr
     snap = {
       version: 1,
       createdAt: new Date().toISOString(),
-      claude: { settingsPath, existedBefore: current.exists, backupPath },
+      // The backup is the only fact we can trust here: it exists exactly when there was a file to copy,
+      // and it is taken after the dialog (`current.exists` could be stale by minutes).
+      claude: { settingsPath, existedBefore: backupPath !== undefined, backupPath },
       vscode: { allowDangerouslySkipPermissions: prevVs.allow, initialPermissionMode: prevVs.mode },
     };
   }
@@ -130,7 +154,11 @@ export async function enableAutonomousMode(context: vscode.ExtensionContext): Pr
   const written = await writeJsonFileAtomic(settingsPath, next);
   snap.claude.writtenSha256 = sha256(written);
   await storeSnapshot(context, snap);
-  await pruneBackups(dir, 10, [backupPath, snap.claude.backupPath]);
+  try {
+    await pruneBackups(dir, 10, [backupPath, snap.claude.backupPath]);
+  } catch (e) {
+    log(`Pruning old backups failed (harmless): ${String(e)}`);
+  }
   for (const c of changes) log(`claude ${c.path}: ${JSON.stringify(c.from)} -> ${JSON.stringify(c.to)}`);
   log(`Snapshot stored (backup: ${backupPath ?? 'none — file did not exist'})`);
 

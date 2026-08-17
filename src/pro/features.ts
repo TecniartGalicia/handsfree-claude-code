@@ -35,13 +35,20 @@ async function snapshotBackupPath(context: vscode.ExtensionContext): Promise<str
   return (await loadSnapshot(context))?.claude.backupPath;
 }
 
-/** Walks up from `dir` looking for a `.git` entry (dir or file). Returns the repo root or `dir` itself. */
-export async function gitRootOf(dir: string): Promise<string> {
-  let cur = path.resolve(dir);
+/**
+ * Walks up from `dir` looking for a `.git` entry (dir or file). Returns the repo root or `dir` itself.
+ * Never returns the home directory: versioned dotfiles (`~/.git`) are common, and a "per-project"
+ * profile written to `~/.claude/settings.local.json` would silently apply to everything.
+ */
+export async function gitRootOf(dir: string, home: string = os.homedir()): Promise<string> {
+  const start = path.resolve(dir);
+  const stop = path.resolve(home);
+  let cur = start;
   for (;;) {
+    if (cur === stop && cur !== start) return start; // reached $HOME without a nearer repo
     if (await fileExists(path.join(cur, '.git'))) return cur;
     const parent = path.dirname(cur);
-    if (parent === cur) return path.resolve(dir);
+    if (parent === cur) return start;
     cur = parent;
   }
 }
@@ -116,10 +123,30 @@ export async function markProjectCareful(context: vscode.ExtensionContext): Prom
     yes,
   );
   if (pick !== yes) return;
-  if (r.changed) await writeJsonFileAtomic(file, r.next);
+  // Claude Code writes "always allow" rules into this very file: re-read after the dialog and reapply on
+  // top of what is there now, so those edits are not overwritten. A copy is kept first.
+  const fresh = await readJsonFile<ClaudeSettings>(file);
+  if (!fresh.ok) {
+    void vscode.window.showErrorMessage(l10n.t('{0} changed while the dialog was open and is not valid JSON any more: {1}. Nothing was changed.', file, fresh.error.message));
+    return;
+  }
+  const applied = applyCarefulProfile(fresh.exists ? fresh.data : undefined);
+  if (applied.changed) {
+    if (fresh.exists) await backupSettingsFile(file, resolveBackupDir(), new Date(), 'before-careful');
+    await writeJsonFileAtomic(file, applied.next);
+  }
   await excludeFromGit(root, path.join('.claude', 'settings.local.json'));
   const records = carefulRecords(context);
-  records[norm(file)] = { file, createdFile: !current.exists, setDefaultMode: r.setDefaultMode, previousDefaultMode: r.previousDefaultMode, at: new Date().toISOString() };
+  // Merge, never overwrite: running the command again (e.g. from another folder of the same repo) would
+  // otherwise forget that WE set defaultMode and which value to restore, leaving a key nobody removes.
+  const prevRec = records[norm(file)];
+  records[norm(file)] = {
+    file,
+    createdFile: prevRec?.createdFile ?? !current.exists,
+    setDefaultMode: r.setDefaultMode || (prevRec?.setDefaultMode ?? false),
+    previousDefaultMode: r.previousDefaultMode ?? prevRec?.previousDefaultMode,
+    at: new Date().toISOString(),
+  };
   await context.globalState.update(STATE_CAREFUL, records);
   log(`Careful profile applied to ${file}`);
   void vscode.window.showInformationMessage(l10n.t('"{0}" is now a careful project. New Claude Code conversations here will ask.', folder.name));
@@ -127,6 +154,11 @@ export async function markProjectCareful(context: vscode.ExtensionContext): Prom
 
 export async function unmarkProjectCareful(context: vscode.ExtensionContext): Promise<void> {
   // Removing is always free: nobody should be stuck with prompts because a licence lapsed.
+  // It still writes inside the project, so Restricted Mode applies here as well (the manifest says so).
+  if (!vscode.workspace.isTrusted) {
+    void vscode.window.showWarningMessage(l10n.t('This workspace is in Restricted Mode; trust it first (Handsfree writes a file inside the project).'));
+    return;
+  }
   const folder = await pickFolder();
   if (!folder) return;
   const root = await gitRootOf(folder.uri.fsPath);
@@ -200,6 +232,13 @@ function templateDetail(id: string, fallback: string): string {
   }
 }
 
+/** True when `rule` is currently listed under permissions.ask or permissions.deny of `settings`. */
+function rulePresent(settings: ClaudeSettings | undefined, rule: string): boolean {
+  const p = settings?.permissions as { ask?: unknown; deny?: unknown } | undefined;
+  const inList = (v: unknown) => Array.isArray(v) && v.includes(rule);
+  return inList(p?.ask) || inList(p?.deny);
+}
+
 export async function chooseGuardrails(context: vscode.ExtensionContext): Promise<void> {
   const settingsPath = resolveClaudeSettingsPath();
   const current = await readClaudeSettings();
@@ -226,10 +265,20 @@ export async function chooseGuardrails(context: vscode.ExtensionContext): Promis
   const toAdd = [...wanted].filter((id) => presence[id] !== 'full');
   const toRemove = GUARDRAIL_TEMPLATES.map((t) => t.id).filter((id) => presence[id] !== 'none' && !wanted.has(id));
   if (!toAdd.length && !toRemove.length) return;
-  // Adding is Pro; removing is always free.
-  if (toAdd.length && !(await ensurePro(context, l10n.t('Guardrails')))) return;
+  // Adding is Pro; removing is always free — so a failed Pro check must not cancel the removals too
+  // (sets show up as "partial" when the user has an equal rule of their own, and those are pre-picked).
+  const sets = toAdd.length && (await ensurePro(context, l10n.t('Guardrails'))) ? toAdd : [];
+  if (!sets.length && !toRemove.length) return;
 
   const addedRecord = context.globalState.get<Record<string, string[]>>(STATE_GUARDRAILS) ?? {};
+  // Reconcile the record with the file first: rules that are no longer there (Revert, a restored backup,
+  // a hand edit) must not be claimed as ours again — otherwise uninstalling a set would delete rules the
+  // user wrote themselves.
+  for (const [id, rules] of Object.entries(addedRecord)) {
+    const present = rules.filter((rule) => rulePresent(settings, rule));
+    if (present.length) addedRecord[id] = present;
+    else delete addedRecord[id];
+  }
   let next: ClaudeSettings = settings ?? {};
   let removed = 0;
   for (const id of toRemove) {
@@ -238,7 +287,7 @@ export async function chooseGuardrails(context: vscode.ExtensionContext): Promis
     removed += r.removed;
     delete addedRecord[id];
   }
-  const { next: next2, added, addedBySet } = applyGuardrails(next, toAdd);
+  const { next: next2, added, addedBySet } = applyGuardrails(next, sets);
   for (const [id, rules] of Object.entries(addedBySet)) addedRecord[id] = [...new Set([...(addedRecord[id] ?? []), ...rules])];
   const backup = await backupSettingsFile(settingsPath, resolveBackupDir(), new Date(), 'before-guardrails');
   await pruneBackups(resolveBackupDir(), 10, [backup, await snapshotBackupPath(context)]);

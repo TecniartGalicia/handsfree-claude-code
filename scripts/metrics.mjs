@@ -4,6 +4,9 @@
 // No dependencies. Usage: node scripts/metrics.mjs [--append] [--json]
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const REPO = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const EXT = { publisher: 'argalla', name: 'handsfree-claude-code', repo: 'TecniartGalicia/handsfree-claude-code', polarOrg: 'fa5605f8-f935-44c5-9923-686f9479d390' };
 const args = new Set(process.argv.slice(2));
@@ -67,11 +70,15 @@ async function reddit() {
 
 function polarToken() {
   if (process.env.POLAR_OAT) return process.env.POLAR_OAT;
-  try {
-    const f = path.join(process.env.USERPROFILE || process.env.HOME || '', 'Documents', 'handsfree-secrets.txt');
-    const l = fs.readFileSync(f, 'utf8').split(/\r?\n/).find((x) => x.startsWith('POLAR_OAT='));
-    return l ? l.slice(10).trim() : '';
-  } catch { return ''; }
+  const docs = path.join(process.env.USERPROFILE || process.env.HOME || '', 'Documents');
+  // Same Polar organisation serves every Argalla product, so the token may sit in any of these files.
+  for (const name of ['handsfree-secrets.txt', 'changekeeper-secrets.txt', 'argalla-secrets.txt']) {
+    try {
+      const m = /^\s*POLAR_OAT\s*=\s*(.+)$/m.exec(fs.readFileSync(path.join(docs, name), 'utf8'));
+      if (m) return m[1].trim();
+    } catch { /* next file */ }
+  }
+  return '';
 }
 
 async function polar() {
@@ -84,11 +91,12 @@ async function polar() {
   const items = o.items || [];
   const paid = items.filter((x) => (x.net_amount ?? x.amount ?? 0) > 0);
   const revenue = paid.reduce((a, x) => a + (x.net_amount ?? x.amount ?? 0), 0) / 100;
-  return { orders: items.length, paidOrders: paid.length, revenue: revenue.toFixed(2) + ' €', keys: k?.pagination?.total_count ?? (k?.items || []).length, granted: (k?.items || []).filter((x) => x.status === 'granted').length };
+  const keys = k?.__err ? nd : (k?.pagination?.total_count ?? (k?.items || []).length);
+  return { orders: items.length, paidOrders: paid.length, revenue: revenue.toFixed(2) + ' €', keys, granted: k?.__err ? undefined : (k?.items || []).filter((x) => x.status === 'granted').length };
 }
 
 const [mk, ov, gh, hnr, rd, po] = await Promise.all([marketplace(), openvsx(), github(), hn(), reddit(), polar()]);
-const today = new Date().toISOString().slice(0, 10);
+const today = new Date().toLocaleDateString('sv-SE'); // local YYYY-MM-DD: a run at 01:00 CEST is today, not yesterday
 const row = `| ${today} | ${mk.installs} | ${mk.downloads} | ${mk.rating}/${mk.ratings} (${mk.reviews} reseñas) | ${ov.downloads} | ${gh.stars} | ${gh.openIssues}/${gh.openPRs} | ${gh.releaseDownloads} | ${po.orders}${po.paidOrders !== undefined ? ` (${po.paidOrders} de pago, ${po.revenue})` : ''} | ${po.keys}${po.granted !== undefined ? ` (${po.granted} activas)` : ''} | ${hnr.hits} | ${rd.hits} |`;
 const header = `| Fecha | MP instalaciones | MP descargas | MP valoración (n) | Open VSX descargas | GH ★ | Issues/PR abiertos | .vsix release | Pedidos Polar | Claves | HN menciones | Reddit menciones |\n|---|---:|---:|---|---:|---:|---|---:|---|---|---:|---:|`;
 
@@ -105,21 +113,47 @@ if (args.has('--json')) {
 }
 
 if (args.has('--append')) {
-  const file = path.resolve('docs', 'METRICAS.md');
+  const file = path.join(REPO, 'docs', 'METRICAS.md'); // relative to the repo, not to the cwd
   let text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
-  if (!text.includes('| Fecha |')) text = `# Métricas — Handsfree for Claude Code\n\nGeneradas con \`node scripts/metrics.mjs --append\` (APIs públicas; Polar solo con POLAR_OAT). "n/d" = no disponible.\n\n${header}\n`;
-  // Keep the daily rows inside the first table: the file also holds dashboard/sales sections below.
+  // Add the table when it is missing — never replace the file: it also holds hand-written sections.
+  if (!text.includes('| Fecha |')) {
+    const intro = text ? text.replace(/\n*$/, '\n\n') : '# Métricas — Handsfree for Claude Code\n\nGeneradas con `node scripts/metrics.mjs --append` (APIs públicas; Polar solo con POLAR_OAT). "n/d" = no disponible.\n\n';
+    text = intro + header + '\n';
+  }
+  // The daily rows live in the first table; the sections below must not move.
   const lines = text.split('\n');
   const headIdx = lines.findIndex((l) => l.startsWith('| Fecha |'));
+  let last = headIdx + 1; // the |---| separator
+  while (last + 1 < lines.length && lines[last + 1].startsWith('| 20')) last++;
   const cols = row.split('|').length;
-  const existing = lines.findIndex((l) => l.startsWith(`| ${today} |`) && l.split('|').length === cols);
+  const existing = lines.findIndex((l, i) => i > headIdx && i <= last && l.startsWith(`| ${today} |`) && l.split('|').length === cols);
   if (existing >= 0) {
-    lines[existing] = row;
+    // Merge instead of overwrite: a degraded read (API down → n/d, or a stale cache reporting fewer
+    // downloads than we already recorded) must never lose the good numbers of an earlier run today.
+    const before = lines[existing].split('|');
+    lines[existing] = row
+      .split('|')
+      .map((cell, i) => {
+        const old = before[i];
+        if (old === undefined || cell.trim() === '' || old.trim() === '') return cell; // row edges
+        if (cell.trim() === 'n/d' && old.trim() !== 'n/d') return old;
+        const a = Number(old);
+        const b = Number(cell);
+        return Number.isFinite(a) && Number.isFinite(b) ? ` ${Math.max(a, b)} ` : cell;
+      })
+      .join('|');
   } else {
-    let last = headIdx + 1; // the |---| separator
-    while (last + 1 < lines.length && lines[last + 1].startsWith('| 20')) last++;
     lines.splice(last + 1, 0, row);
   }
-  fs.writeFileSync(file, lines.join('\n'), 'utf8');
-  console.log(`\n→ ${path.relative(process.cwd(), file)} actualizado`);
+  // One row per day: collapse duplicates a format change may have left behind (keep the first).
+  const seen = new Set();
+  const out = lines.filter((l, i) => {
+    if (i <= headIdx || !l.startsWith('| 20')) return true;
+    const date = l.split('|')[1]?.trim();
+    if (seen.has(date)) return false;
+    seen.add(date);
+    return true;
+  });
+  fs.writeFileSync(file, out.join('\n'), 'utf8');
+  console.log(`\n→ ${file} actualizado`);
 }

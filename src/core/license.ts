@@ -22,6 +22,8 @@
 export const POLAR_BASE = 'https://api.polar.sh/v1/customer-portal/license-keys';
 export const GRACE_DAYS = 14;
 export const REVALIDATE_HOURS = 24;
+/** After a failed check, do not hit the network again for this long (the grace period covers it). */
+export const RETRY_AFTER_FAILURE_HOURS = 1;
 
 export interface LicenseState {
   version?: 1;
@@ -84,6 +86,11 @@ export function decideOffline(state: LicenseState, now: Date, devOverride = fals
   }
   const validatedAge = ageMs(state.lastValidatedAt, now);
   if (validatedAge !== undefined && validatedAge >= 0 && validatedAge < REVALIDATE_HOURS * H) return { pro: true, source: 'validated' };
+  // Revalidation is due but the last attempt failed less than RETRY_AFTER_FAILURE_HOURS ago and we are still
+  // inside the grace period: keep working offline instead of waiting for a timeout on every single command.
+  const failedRecently = checkedAge !== undefined && checkedAge >= 0 && checkedAge < RETRY_AFTER_FAILURE_HOURS * H;
+  const checkedAfterValidated = validatedAge === undefined || (checkedAge !== undefined && checkedAge < validatedAge);
+  if (failedRecently && checkedAfterValidated && validatedAge !== undefined && validatedAge < GRACE_DAYS * D) return { pro: true, source: 'grace' };
   return undefined; // due (or clock skew) → revalidate
 }
 
@@ -103,8 +110,16 @@ export type ValidationResult =
     };
 
 /** Applies a validation attempt's outcome. Always records lastCheckedAt. */
+/** Statuses Polar documents. Anything else (a proxy answering its own JSON, a new Polar value) is not a verdict. */
+const KNOWN_STATUSES = new Set(['granted', 'revoked', 'disabled', 'expired']);
+
 export function decideAfterValidation(state: LicenseState, now: Date, result: ValidationResult): { decision: ProDecision; next: LicenseState } {
   const nowIso = now.toISOString();
+  if (result.ok && !KNOWN_STATUSES.has(result.status)) {
+    // Never switch a paying customer off because we did not understand the answer: treat it as a soft
+    // failure (grace period applies) and do not persist the status.
+    return decideAfterValidation(state, now, { ok: false, kind: 'network' });
+  }
   if (result.ok) {
     const expired = !!result.expiresAt && new Date(result.expiresAt).getTime() < now.getTime();
     const next: LicenseState = { ...state, status: result.status, expiresAt: result.expiresAt ?? null, lastCheckedAt: nowIso };
@@ -122,8 +137,13 @@ export function decideAfterValidation(state: LicenseState, now: Date, result: Va
     return { decision: { pro: false, reason: reasonForStatus(status) }, next: { ...state, status, lastCheckedAt: nowIso } };
   }
   const next: LicenseState = { ...state, lastCheckedAt: nowIso };
-  // A persisted negative answer does not come back through the grace period: only a fresh positive answer does.
-  if (state.status && state.status !== 'granted') return { decision: { pro: false, reason: reasonForStatus(state.status) }, next };
+  // A persisted negative answer does not come back through the grace period: only a fresh positive answer
+  // does. Only statuses we understand count as negative (see KNOWN_STATUSES).
+  if (state.status && state.status !== 'granted' && (KNOWN_STATUSES.has(state.status) || state.status === 'not-found' || state.status === 'activation-removed')) {
+    return { decision: { pro: false, reason: reasonForStatus(state.status) }, next };
+  }
+  // An expiry date already in the past is a fact, not an interpretation: no grace for it either.
+  if (state.expiresAt && new Date(state.expiresAt).getTime() < now.getTime()) return { decision: { pro: false, reason: 'expired' }, next };
   // Soft failure (network, or an answer we do not understand / 4xx): honour the grace period.
   const validatedAge = ageMs(state.lastValidatedAt, now);
   if (validatedAge !== undefined && validatedAge < GRACE_DAYS * D) {
@@ -193,6 +213,8 @@ export async function polarActivate(fetchImpl: FetchLike, cfg: PolarConfig, key:
     const r = await post(fetchImpl, 'activate', { key, organization_id: cfg.organizationId, label, meta }, { retryBusy: true, ...opts });
     if (r.ok && r.data && typeof r.data.id === 'string') {
       const lk = r.data.license_key ?? {};
+      // Only trust a status we were actually told (and understand); anything else is an answer we cannot read.
+      if (lk.status !== undefined && !KNOWN_STATUSES.has(String(lk.status))) return { ok: false, kind: 'unexpected', message: `Unknown licence status "${String(lk.status)}"` };
       return { ok: true, activationId: r.data.id, status: String(lk.status ?? 'granted'), expiresAt: lk.expires_at ?? null };
     }
     if (r.ok) return { ok: false, kind: 'unexpected', message: 'Unexpected answer from the licence server' };
@@ -218,10 +240,13 @@ export async function polarValidate(fetchImpl: FetchLike, cfg: PolarConfig, key:
     if (r.status === 404 && r.data && typeof r.data === 'object' && r.data.error === 'ResourceNotFound' && typeof r.data.detail === 'string') {
       const detail = detailText(r.data, '');
       if (activationId && !/no longer active/i.test(detail)) {
-        // "Not found" with an activation id: the key may be fine and only this computer's activation gone. Ask about the key alone.
-        const r2 = await post(fetchImpl, 'validate', { key, organization_id: cfg.organizationId }, opts);
+        // "Not found" with an activation id: the key may be fine and only this computer's activation gone.
+        // Ask about the key alone (never waiting again: this is the second call of the same command).
+        const r2 = await post(fetchImpl, 'validate', { key, organization_id: cfg.organizationId }, { ...opts, retryBusy: false });
         if (r2.ok && r2.data && typeof r2.data.status === 'string') return { ok: false, kind: 'invalid', definitive: true, detail, activationGone: true };
         if (!(r2.status === 404 && r2.data && typeof r2.data === 'object' && r2.data.error === 'ResourceNotFound')) return { ok: false, kind: r2.status >= 500 || r2.status === 429 ? 'network' : 'invalid' }; // could not tell → soft
+        // Both calls say "not found": the key itself is unknown. The second answer is the one about the key.
+        return { ok: false, kind: 'invalid', definitive: true, detail: detailText(r2.data, detail) };
       }
       return { ok: false, kind: 'invalid', definitive: true, detail };
     }

@@ -87,18 +87,38 @@ export async function settingsChangedSinceSnapshot(snap: Snapshot): Promise<bool
  */
 export async function restoreClaudeSettings(snap: Snapshot): Promise<'restored' | 'deleted' | 'backup-missing'> {
   const { settingsPath, existedBefore, backupPath } = snap.claude;
-  if (!existedBefore) {
+  const haveBackup = !!backupPath && (await fileExists(backupPath));
+  // A backup exists only when there was a file to copy, so it outranks `existedBefore` (which is
+  // recorded from an earlier read and could be stale): never delete a file we have a copy of.
+  if (!existedBefore && !haveBackup) {
     await fs.rm(settingsPath, { force: true });
     return 'deleted';
   }
-  if (!backupPath || !(await fileExists(backupPath))) return 'backup-missing';
+  if (!haveBackup) return 'backup-missing';
   await fs.mkdir(path.dirname(settingsPath), { recursive: true });
-  await fs.copyFile(backupPath, settingsPath);
+  // Atomic like writeJsonFileAtomic: a crash mid-copy must not leave a truncated settings.json.
+  const tmp = `${settingsPath}.handsfree-restore-${process.pid}-${Date.now()}.tmp`;
+  try {
+    await fs.copyFile(backupPath!, tmp);
+    try {
+      await fs.rename(tmp, settingsPath);
+    } catch {
+      await fs.copyFile(backupPath!, settingsPath); // rename refused (Windows): direct copy
+    }
+  } finally {
+    try {
+      await fs.rm(tmp, { force: true });
+    } catch {
+      /* stray temp copy is harmless */
+    }
+  }
   return 'restored';
 }
 
 /**
- * Keep the newest `keep` backups (by name = by timestamp), delete the rest.
+ * Keep the newest `keep` backups, delete the rest. Names are `<label>.<timestamp>.json` and several
+ * labels share the directory (before-enable, before-revert, before-doctor…), so sorting by the whole
+ * name would sort by label first and delete the newest files: sort by the timestamp part only.
  * Never touches snapshot files, and never deletes the paths listed in `protect`.
  */
 export async function pruneBackups(dir: string, keep = 10, protect: (string | undefined)[] = []): Promise<number> {
@@ -109,7 +129,10 @@ export async function pruneBackups(dir: string, keep = 10, protect: (string | un
     return 0;
   }
   const protectedNames = new Set(protect.filter((p): p is string => !!p).map((p) => path.basename(p)));
-  const backups = names.filter((n) => /^[a-z-]+\..+\.json$/.test(n) && !n.endsWith('.snapshot.json') && n !== SNAPSHOT_FILE).sort();
+  const stamp = (n: string) => n.slice(n.indexOf('.') + 1);
+  const backups = names
+    .filter((n) => /^[a-z-]+\..+\.json$/.test(n) && !n.endsWith('.snapshot.json') && n !== SNAPSHOT_FILE)
+    .sort((a, b) => stamp(a).localeCompare(stamp(b)) || a.localeCompare(b));
   const excess = backups.slice(0, Math.max(0, backups.length - keep)).filter((n) => !protectedNames.has(n));
   await Promise.all(excess.map((n) => fs.rm(path.join(dir, n), { force: true })));
   return excess.length;

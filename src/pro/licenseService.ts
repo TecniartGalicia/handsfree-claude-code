@@ -41,16 +41,22 @@ function devUnlocked(): boolean {
 /** Session cache + in-flight de-duplication: a burst of commands causes at most one validation. */
 let cached: { at: number; decision: ProDecision } | undefined;
 let inflight: Promise<ProDecision> | undefined;
+/** Bumped by invalidateProCache(): a validation started before an activation must not overwrite the new state. */
+let cacheGeneration = 0;
 
 export function invalidateProCache(): void {
   cached = undefined;
+  cacheGeneration++;
 }
 
 /** Decides Pro status: offline first, network (throttled) only when needed. Never throws. */
-export async function proStatus(context: vscode.ExtensionContext, force = false): Promise<ProDecision> {
+export async function proStatus(context: vscode.ExtensionContext, force = false, token?: vscode.CancellationToken): Promise<ProDecision> {
   if (!force && cached && Date.now() - cached.at < 60_000) return cached.decision;
-  if (inflight) return inflight;
+  // A forced check may sleep through a rate limit; background callers must not queue behind it.
+  if (inflight && !force) return inflight;
+  if (inflight && force) await inflight.catch(() => undefined);
   inflight = (async () => {
+    const generation = cacheGeneration;
     try {
       const now = new Date();
       const state = await loadState(context);
@@ -58,19 +64,30 @@ export async function proStatus(context: vscode.ExtensionContext, force = false)
       if (!decision) {
         if (!polarConfigured()) decision = { pro: false, reason: 'not-configured' };
         else {
-          const result = await polarValidate(fetchImpl, cfg(), state.key!, state.activationId, { retryBusy: force });
+          const result = await polarValidate(fetchImpl, cfg(), state.key!, state.activationId, {
+            retryBusy: force,
+            isCancelled: () => token?.isCancellationRequested ?? false,
+            sleep: (ms: number) =>
+              new Promise<void>((resolve) => {
+                const h = setTimeout(resolve, ms);
+                token?.onCancellationRequested(() => {
+                  clearTimeout(h);
+                  resolve();
+                });
+              }),
+          });
           const r = decideAfterValidation(state, now, result);
           decision = r.decision;
           await saveState(context, r.next);
           log(`Licence validation: ${result.ok ? result.status : result.kind} → ${decision.pro ? 'pro (' + decision.source + ')' : decision.reason}`);
         }
       }
-      cached = { at: Date.now(), decision };
+      if (generation === cacheGeneration) cached = { at: Date.now(), decision };
       return decision;
     } catch (e) {
       log(`Licence check failed: ${String(e)}`);
       const decision: ProDecision = { pro: false, reason: 'network' };
-      cached = { at: Date.now(), decision };
+      if (generation === cacheGeneration) cached = { at: Date.now(), decision };
       return decision;
     } finally {
       inflight = undefined;
@@ -172,7 +189,10 @@ export async function activateLicenseCommand(context: vscode.ExtensionContext): 
       }
     } else if (res.ok && hadSlot && previous.activationId !== res.activationId) {
       const freed = await polarDeactivate(fetchImpl, cfg(), previous.key!, previous.activationId!, opts);
-      if (!freed) log(`Previous activation ${previous.activationId} could not be freed on Polar (rate limit or network); it may still count until deactivated from the customer portal.`);
+      if (!freed) {
+        log(`Previous activation ${previous.activationId} could not be freed on Polar (rate limit or network); it may still count until deactivated from the customer portal.`);
+        void vscode.window.showWarningMessage(l10n.t("Handsfree Pro is active, but this computer's previous activation could not be released; it may still count against the activation limit. You can free it from your Polar customer portal."));
+      }
     }
     return res;
   });
@@ -257,7 +277,11 @@ function reasonText(d: ProDecision): string {
 }
 
 export async function licenseStatusCommand(context: vscode.ExtensionContext): Promise<void> {
-  const d = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: l10n.t('Checking Handsfree Pro licence…') }, () => proStatus(context, true));
+  // Forced checks may wait out a rate limit (up to ~30 s per call): show it and let the user cancel.
+  const d = await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title: l10n.t('Checking Handsfree Pro licence…'), cancellable: true },
+    (_p, token) => proStatus(context, true, token),
+  );
   const state = await loadState(context);
   const lines = [
     d.pro ? l10n.t('Handsfree Pro: active ({0})', reasonText(d)) : l10n.t('Handsfree Pro: not active ({0})', reasonText(d)),

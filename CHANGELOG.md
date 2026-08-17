@@ -4,6 +4,26 @@ All notable changes to this extension are documented here. Format: [Keep a Chang
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-17
+
+Full post-publication audit (six independent reviewers, every finding reproduced before fixing). No new features: this release is about not losing your settings and telling you the truth.
+
+### Fixed
+- **Revert could delete a settings file it had a backup of.** If `~/.claude/settings.json` appeared while the consent dialog was open, the snapshot said "there was no file" and Revert removed it. The backup now decides, and a restore never deletes a file we have a copy of.
+- **Enable no longer overwrites what Claude Code wrote while the dialog was open.** The file is re-read after consent and the changes are recomputed on top of it (if it became invalid JSON in the meantime, nothing is written).
+- **The Doctor's main check was dead code.** VS Code returns a per-type default (`""` / `false`) for settings declared without one, so "starting mode is not pinned" — the most common reason Claude keeps asking — was never reported, and instead the report claimed `New conversations start in "" mode`. It now reads the user value.
+- **The Doctor now reports `ask` rules coming from managed policy and from the project**, not only from your user file: those force a prompt in any mode and used to produce a misleading "all good".
+- **Old backups were pruned in the wrong order** (by label, not by date), so the newest ones were deleted first.
+- **Revert keeps the snapshot when it could not finish**, so it can be retried, instead of reporting success and forgetting what to restore.
+- **`claudeCode.*` values are read even when the Claude Code extension is not installed** — they live in VS Code's settings, and Revert used to delete them instead of restoring them.
+- **The careful profile and the guardrail sets stopped stepping on your own edits**: files are re-read before writing, a backup is taken, the guardrail record is reconciled with what is really in the file (it could delete rules you wrote yourself), and marking a project twice no longer forgets how to restore `defaultMode`.
+- **Removing guardrails is free again** even when a set shows as partially installed.
+- **A "per-project" careful profile can no longer land in your home directory** when `~` happens to be a git repository (versioned dotfiles).
+- **Licences**: an unknown `status` in a 200 answer (a proxy answering its own JSON, a new Polar value) is treated as a soft failure instead of switching Pro off permanently; an expired date is not covered by the grace period; a failed check is not retried on every command for 14 days; "licence status" is cancellable and no longer blocks the other Pro commands; activating warns when the previous activation could not be released.
+- **The secrets guardrail set now also denies `Edit(…)`** for those paths: a `Read` deny covers Edit and Write but not NotebookEdit, and the set promised it blocked edits.
+- **Reports**: secrets are masked in stale allow rules, in URLs with credentials, in webhook URLs and in `NAME_SECRET=value` shapes; the user name is redacted in UNC paths; the report shows `~/.claude/settings.json` instead of collapsing it to `~/settings.json`.
+- Smaller ones: no `.tmp` copy of your settings is left behind when a write fails, restores are atomic, a JSON root that is not an object is reported instead of silently replaced, a relative `handsfree.claudeSettingsPath` is ignored (it resolved against VS Code's own directory), an unreadable managed policy no longer counts as "no policy", `constructor`/`toString` are not "renamed tools", `Bash(npm run auto-accept-check *)` is not "left behind by a third-party extension", the clean-up fix reports what it really removed, the output channel and the status bar survive a second activation, and the command name inside error messages is translated.
+
 ## [0.1.1] - 2026-08-15
 
 Verified end to end against the live Polar API (real purchase flow, activation, validation, deactivation, disable/revoke from the dashboard). Findings, all fixed:
@@ -37,6 +57,7 @@ Verified end to end against the live Polar API (real purchase flow, activation, 
 - Nothing runs at startup; no hooks; no network; no telemetry.
 - Never writes to an invalid settings file; never rewrites when nothing would change.
 
-[Unreleased]: https://github.com/TecniartGalicia/handsfree-claude-code/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/TecniartGalicia/handsfree-claude-code/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/TecniartGalicia/handsfree-claude-code/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/TecniartGalicia/handsfree-claude-code/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/TecniartGalicia/handsfree-claude-code/releases/tag/v0.1.0
