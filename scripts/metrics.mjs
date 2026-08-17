@@ -33,8 +33,11 @@ async function marketplace() {
     for (const s of x.statistics || []) st[s.statisticName] = Math.max(st[s.statisticName] ?? 0, Number(s.value) || 0);
   }
   if (!e) return { installs: nd, downloads: nd, version: nd, rating: nd, ratings: nd, reviews: nd, reviewList: [] };
-  const rv = await json(`https://marketplace.visualstudio.com/_apis/public/gallery/publishers/${EXT.publisher}/extensions/${EXT.name}/reviews?count=100&filterOptions=1&api-version=7.1-preview.1`, { headers: { Accept: 'application/json;api-version=7.1-preview.1' } });
-  return { installs: st.install ?? 0, downloads: st.downloadCount ?? 0, version: e.versions?.[0]?.version ?? nd, rating: st.averagerating ? Number(st.averagerating).toFixed(1) : '-', ratings: st.ratingcount ?? 0, reviews: rv?.totalReviewCount ?? nd, reviewList: rv?.reviews ?? [] };
+  // filterOptions=0 returns rating-only entries too (filterOptions=1 hides them); the endpoint answers empty now and
+  // then, so fall back to the ratingcount statistic instead of printing "n/d".
+  const rv = await json(`https://marketplace.visualstudio.com/_apis/public/gallery/publishers/${EXT.publisher}/extensions/${EXT.name}/reviews?count=100&filterOptions=0&api-version=7.1-preview.1`, { headers: { Accept: 'application/json;api-version=7.1-preview.1' } });
+  const reviews = typeof rv?.totalReviewCount === 'number' ? rv.totalReviewCount : (st.ratingcount ?? nd);
+  return { installs: st.install ?? 0, downloads: st.downloadCount ?? 0, version: e.versions?.[0]?.version ?? nd, rating: st.averagerating ? Number(st.averagerating).toFixed(1) : '-', ratings: st.ratingcount ?? 0, reviews, reviewList: rv?.reviews ?? [] };
 }
 
 async function openvsx() {

@@ -5,6 +5,7 @@ Generadas con `node scripts/metrics.mjs --append` (APIs públicas; Polar solo co
 | Fecha | MP instalaciones | MP descargas | MP valoración (n) | Open VSX descargas | GH ★ | Issues/PR abiertos | .vsix release | Pedidos Polar | Claves | HN menciones | Reddit menciones |
 |---|---:|---:|---|---:|---:|---|---:|---|---|---:|---:|
 | 2026-08-16 | 1 | 30 | 5.0/1 (1 reseñas) | 628 | 0 | 0/0 | 0 | n/d | n/d | 0 | n/d |
+| 2026-08-17 | 1 | 35 | 5.0/1 (1 reseñas) | 632 | 0 | 0/0 | 0 | n/d | n/d | 0 | n/d |
 
 ## Panel privado (Marketplace › Manage › Reports) — la cifra buena
 
