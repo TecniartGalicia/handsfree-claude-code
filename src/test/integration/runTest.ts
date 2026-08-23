@@ -41,7 +41,14 @@ async function main(): Promise<void> {
       extensionTestsEnv: { CLAUDE_CONFIG_DIR: configDir, HANDSFREE_IT_TMP: tmp },
     });
   } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
+    // Borrado best-effort: en Windows VS Code puede mantener handles abiertos un
+    // instante tras cerrarse (EBUSY al hacer rmdir). Reintentamos y, si aún falla,
+    // NO tumbamos el job por un fallo de limpieza (los tests ya corrieron).
+    try {
+      fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+    } catch (e) {
+      console.warn('cleanup del temp no completado (se ignora):', (e as Error).message);
+    }
   }
 }
 
